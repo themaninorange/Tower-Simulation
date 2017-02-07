@@ -29,26 +29,20 @@ gcc simintersections.c -o temp -lglut -lm -lGLU -lGL
 #define DRAW 10
 
 // Globals
-double px[N], py[N], pz[N], vx[N], vy[N], vz[N], fx[N], fy[N], fz[N], anchor[N], mass[N], radii[N], G_const, H_const, p_const, q_const, k_const, rod_proportion; 
+double px[N], py[N], pz[N], vx[N], vy[N], vz[N], fx[N], fy[N], fz[N], mass[N], G_const, H_const, p_const, q_const; 
 
 void set_initial_conditions()
 {
 	G_const = 1;
-	H_const = 0;
+	H_const = 0.001;
 	p_const = 2;
-	q_const = 1;
-	k_const = 400;
-	rod_proportion = 1;
+	q_const = 3;
 	int i;
 	for(i = 0; i < N; i++){
 		mass[i] = ALLMASS;
 	}	//Assigns masses to spheres.
 	
-	//mass[0] = 1000;
-	
-	for(i = 0; i < N; i++){
-		radii[i] = 0.01*pow(mass[i], 1.0/3);
-	}	//Assigns radii to spheres based on mass.
+	mass[0] = 1000;
 	
 	for(i = 0; i < N; i++){
 		px[i] = 2.0*i/N-1;
@@ -56,9 +50,9 @@ void set_initial_conditions()
 		pz[i] = sqrt(1-px[i]*px[i])*cos(i);
 	}	//Initialize spheres around the unit sphere
 	
-	/*px[0] = 0;
+	px[0] = 0;
 	py[0] = 0;
-	pz[0] = 0;// */
+	pz[0] = 0;
 	
 	/*for(i = 0; i < N; i++){
 		vx[i] = py[i] + 0.5;
@@ -67,16 +61,10 @@ void set_initial_conditions()
 	}// */	//Initialize sphere velocities to something nonzero
 	
 	for(i = 0; i < N; i++){
-		vx[i] = py[i]*3;
-		vy[i] = -pz[i]*3;
-		vz[i] = py[i]-px[i];
-	}// */	//Initialize sphere velocities to something nonzero
-	
-	/*for(i = 0; i < N; i++){
-		vx[i] = 0;
-		vy[i] = 0;
+		vx[i] = py[i]*30;
+		vy[i] = -pz[i]*30;
 		vz[i] = 0;
-	}// */	//Initialize sphere velocities to zero
+	}// */	//Initialize sphere velocities to something nonzero
 	
 	vx[0] = 0;
 	vy[0] = 0;
@@ -96,7 +84,7 @@ void draw_picture()
 		glColor3d(1.0,1.0,0.5);
 		glPushMatrix();
 		glTranslatef(px[i], py[i], pz[i]);
-		glutSolidSphere(radii[i],20,20);
+		glutSolidSphere(0.01*pow(mass[i], 1.0/3),20,20);
 		glPopMatrix();
 	}
 	
@@ -105,7 +93,7 @@ void draw_picture()
 
 int n_body()
 {
-	double fx[N], fy[N], fz[N], dx, dy, dz, rp1, rq1, feynFac, dD; 
+	double fx[N], fy[N], fz[N], dx, dy, dz, rp1, rq1, feynFac; 
 	double dt = DT;
 	int    tdraw = 0; 
 	int    tprint = 0;
@@ -134,15 +122,17 @@ int n_body()
 				dz = pz[j] - pz[i];
 				
 				r = sqrt(dx*dx+dy*dy+dz*dz);
-				dD= r - (radii[i]+radii[j])*rod_proportion;
+				rp1 = pow(r,p_const+1);
+				rq1 = pow(r,q_const+1);
+				feynFac = (G_const/rp1 - H_const/rq1);
 				
-				fx[i] = fx[i] + k_const*dx*dD/r;
-				fy[i] = fy[i] + k_const*dy*dD/r;
-				fz[i] = fz[i] +	k_const*dz*dD/r;
+				fx[i] = fx[i] + dx*mass[j]*feynFac;
+				fy[i] = fy[i] + dy*mass[j]*feynFac;
+				fz[i] = fz[i] +	dz*mass[j]*feynFac;
 			
-				fx[j] = fx[j] - k_const*dx*dD/r;
-				fy[j] = fy[j] - k_const*dy*dD/r;
-				fz[j] = fz[j] - k_const*dz*dD/r;
+				fx[j] = fx[j] - dx*mass[i]*feynFac;
+				fy[j] = fy[j] - dy*mass[i]*feynFac;
+				fz[j] = fz[j] - dz*mass[i]*feynFac;
 			}
 		}
 		
@@ -199,41 +189,6 @@ void Display(void)
 	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 	glutSwapBuffers();
 	glFlush();
-
-glBegin(GL_TRIANGLES);           // Begin drawing the pyramid with 4 triangles
-      // Front
-      glColor3f(1.0f, 0.0f, 0.0f);     // Red
-      glVertex3f( 0.0f, 1.0f, 0.0f);
-      glColor3f(0.0f, 1.0f, 0.0f);     // Green
-      glVertex3f(-1.0f, -1.0f, 1.0f);
-      glColor3f(0.0f, 0.0f, 1.0f);     // Blue
-      glVertex3f(1.0f, -1.0f, 1.0f);
- 
-      // Right
-      glColor3f(1.0f, 0.0f, 0.0f);     // Red
-      glVertex3f(0.0f, 1.0f, 0.0f);
-      glColor3f(0.0f, 0.0f, 1.0f);     // Blue
-      glVertex3f(1.0f, -1.0f, 1.0f);
-      glColor3f(0.0f, 1.0f, 0.0f);     // Green
-      glVertex3f(1.0f, -1.0f, -1.0f);
- 
-      // Back
-      glColor3f(1.0f, 0.0f, 0.0f);     // Red
-      glVertex3f(0.0f, 1.0f, 0.0f);
-      glColor3f(0.0f, 1.0f, 0.0f);     // Green
-      glVertex3f(1.0f, -1.0f, -1.0f);
-      glColor3f(0.0f, 0.0f, 1.0f);     // Blue
-      glVertex3f(-1.0f, -1.0f, -1.0f);
- 
-      // Left
-      glColor3f(1.0f,0.0f,0.0f);       // Red
-      glVertex3f( 0.0f, 1.0f, 0.0f);
-      glColor3f(0.0f,0.0f,1.0f);       // Blue
-      glVertex3f(-1.0f,-1.0f,-1.0f);
-      glColor3f(0.0f,1.0f,0.0f);       // Green
-      glVertex3f(-1.0f,-1.0f, 1.0f);
-glEnd();   // Done drawing the pyramid
-
 	control();
 }
 

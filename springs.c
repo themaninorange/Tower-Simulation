@@ -29,7 +29,7 @@ gcc simintersections.c -o temp -lglut -lm -lGLU -lGL
 #define DRAW 10
 
 // Globals
-double px[N], py[N], pz[N], vx[N], vy[N], vz[N], fx[N], fy[N], fz[N], anchor[N], mass[N], radii[N], G_const, H_const, p_const, q_const, k_const, rod_proportion; 
+double px[N], py[N], pz[N], vx[N], vy[N], vz[N], fx[N], fy[N], fz[N], mass[N], radii[N], G_const, H_const, p_const, q_const, k_const, rod_proportion; 
 
 void set_initial_conditions()
 {
