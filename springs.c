@@ -38,13 +38,13 @@ void set_initial_conditions()
 	p_const = 2;
 	q_const = 1;
 	k_const = 400;
-	rod_proportion = 1;
+	rod_proportion = 2;
 	int i;
 	for(i = 0; i < N; i++){
 		mass[i] = ALLMASS;
 	}	//Assigns masses to spheres.
 	
-	//mass[0] = 1000;
+	mass[0] = 1000;
 	
 	for(i = 0; i < N; i++){
 		radii[i] = 0.01*pow(mass[i], 1.0/3);
@@ -56,7 +56,7 @@ void set_initial_conditions()
 		pz[i] = sqrt(1-px[i]*px[i])*cos(i);
 	}	//Initialize spheres around the unit sphere
 	
-	/*px[0] = 0;
+	//:px[0] = 0;
 	py[0] = 0;
 	pz[0] = 0;// */
 	
