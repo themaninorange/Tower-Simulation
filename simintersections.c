@@ -13,10 +13,11 @@ gcc simintersections.c -o temp -lglut -lm -lGLU -lGL
 
 #define PI 3.141592654
 
-#define N 7
+#define N 100
+#define MAXCONNECTIONS 10
 
-#define XWindowSize 1024
-#define YWindowSize 1024
+#define XWindowSize 600
+#define YWindowSize 600
 
 #define STOP_TIME 1000.0
 #define DT        0.05
@@ -30,20 +31,76 @@ gcc simintersections.c -o temp -lglut -lm -lGLU -lGL
 #define DRAW 10
 
 // Globals
-double px[N], py[N], pz[N], vx[N], vy[N], vz[N], fx[N], fy[N], fz[N], mass[N], radii[N], G_const, H_const, p_const, q_const, k_const, k_anchor, rod_proportion, dampening; 
+double px[N], py[N], pz[N], vx[N], vy[N], vz[N], fx[N], fy[N], fz[N], mass[N], radii[N], G_const, H_const, p_const, q_const, k_const, k_anchor, rod_proportion, dampening;
 
-bool anchorx[N], anchory[N], anchorz[N];
+int 	conn_index[N]; 		//List of where to look in i_conns for connections.
+int 	*i_conns  = NULL;	//List of nodes connected at appropriate index.
+double 	*i_kconst = NULL;	//List of "springiness" constant associated with the above connections.
+double  *i_lengths= NULL;	//List of default lengths for the above connections.
+/*
+EXAMPLE:
+
+If conn_index[0] is zero, and conn_index[1] is 6, this means that i_conns entries 0 through 5 will be 
+	connections to node zero.  If conn_index[2] is 9, then i_conns entries 6 through 8 will be
+	connections to node one.
+
+i_conns will then have length equal to the total number of edges, and its entries will be which nodes
+	are connected to the node associated with that index range.  If i_conns[0] through i_conns[9] are
+		 1,   2,   5,   6,   7,   10,  0,   2,   5,          ...
+		|    connected to node 0     | connected to node 1 | ...
+	we can loop through i_conns[6] through i_conns[8] to find the connections for node 1.
+
+i_kconst will have the same structure as i_conns, but the entries will be the spring constants associated with
+	the connections in i_conns.  If i_kconst[0] through i_kconst[9] are
+		 3.5, 5.5, 10,  4,   0.5, 12.1,7.2, 17,  3.2	     ...
+		| ^  |					| ^  |
+		  |					  |	
+		  |					Value of spring constant for connection between 1 and 5.
+		Value of spring constant for connection between 0 and 1.
+
+i_lengths will also have information about connections, like i_kconst, but the entries will be the lengths of the springs.
+*/
+
+bool anchor[N];	//Establishes whether each node is anchored.
+
+std :: random_device generator;
+std :: uniform_real_distribution<float> unif_dist(0.0,1.0);
+
+void create_connections(){
+
+	int index = 0;
+	int i_conns, numconns;
+	float prob = 0.75;
+	double kconst, length;
+	
+	
+	
+	int i,j;
+	for(i = 0 ; i < N ; i++){
+		numconns = 0;
+		for(j = i+1; j < N ; j++){
+			if(!anchor[i] || !anchor[j]){
+				if(unif_dist(generator) < prob){
+					i_conns[index] = j;
+					index += 1;
+					numconns += 1;
+				}
+			}
+		}
+		if(i!=N-1){
+			conn_index[i+1] = conn_index[i] + numconns;
+			//The next index should begin after all of the connections this node has.
+		}
+	} 
+}
 
 void set_initial_conditions()
 {
 	G_const = 1;
-	H_const = 0;
-	p_const = 2;
-	q_const = 1;
 	k_const = 1;
 	k_anchor = 4000;
 	rod_proportion = 10;
-	dampening = 0.01;	int i;
+	dampening = 0.03;	int i;
 	for(i = 0; i < N; i++){
 		mass[i] = ALLMASS;
 	}	//Assigns masses to spheres.
@@ -62,10 +119,8 @@ void set_initial_conditions()
 		py[i] = -1;
 		pz[i] = cos(i+1);
 		
-		anchorx[i] = true;
-		anchory[i] = true;
-		anchorz[i] = true;
-	
+		anchor[i] = true;	
+
 		vx[i] = 0;
 		vy[i] = 0;
 		vz[i] = 0;
@@ -73,13 +128,6 @@ void set_initial_conditions()
 		mass[i] = 10000;
 	}
 	
-	px[6] = 0;
-	pz[6] = 0;
-	py[6] = 1;
-
-	vx[6] = 0;
-	vz[6] = 0;
-	vy[6] = 0;
 	for(i = 0; i < N; i++){
 		radii[i] = 0.01*pow(mass[i], 1.0/3);
 	}	//Assigns radii to spheres based on mass.
@@ -119,15 +167,6 @@ void draw_picture()
 {
 	glClear(GL_COLOR_BUFFER_BIT);
 	glClear(GL_DEPTH_BUFFER_BIT);
-	
-	int i;
-	for(i = 0 ; i < N ; i++){
-		glColor3d(1.0,1.0,0.5);
-		glPushMatrix();
-		glTranslatef(px[i], py[i], pz[i]);
-		glutSolidSphere(radii[i],20,20);
-		glPopMatrix();
-	}
 
 	glBegin(GL_QUADS);
 		glColor3f(0.2f, 1.0f, 0.5f);     // Red
@@ -138,8 +177,25 @@ void draw_picture()
 		glVertex3f(2.0f, -1.0f, -2.0f);
 		glColor3f(0.2f, 1.0f, 0.3f);     // Green
 		glVertex3f(2.0f, -1.0f, 2.0f);
-	glEnd();
-
+	glEnd(); // draw "ground"
+	
+	int i, j;
+	for(i = 0 ; i < N ; i++){
+		for(j = i + 1 ; j < N ; j++){
+			glBegin(GL_LINES);
+				glVertex3f(px[i], py[i], pz[i]);
+				glVertex3f(px[j], py[j], pz[j]);
+			glEnd();
+		}
+	}	// draw connections between nodes
+	
+	for(i = 0 ; i < N ; i++){
+		glColor3d(1.0,1.0,0.5);
+		glPushMatrix();
+		glTranslatef(px[i], py[i], pz[i]);
+		glutSolidSphere(radii[i],20,20);
+		glPopMatrix();
+	}	// draw intersections
 
 /*glBegin(GL_TRIANGLES);           // Begin drawing the pyramid with 4 triangles
       // Front
@@ -222,13 +278,23 @@ int n_body()
 
 				dD= r - (radii[i]+radii[j])*rod_proportion;
 				
-				fx[i] = fx[i] + ((dD*dpx>0)?1:-1)*(fabs((dD)*k_const*dpx/r) - dampening*fabs(relative_v));
+				fx[i] = fx[i] + (dD*k_const + dampening*relative_v)*dpx/r;
+				fy[i] = fy[i] + (dD*k_const + dampening*relative_v)*dpy/r;
+				fz[i] = fz[i] + (dD*k_const + dampening*relative_v)*dpz/r;
+			                                                                 
+				fx[j] = fx[j] - (dD*k_const + dampening*relative_v)*dpx/r;
+				fy[j] = fy[j] - (dD*k_const + dampening*relative_v)*dpy/r;
+				fz[j] = fz[j] - (dD*k_const + dampening*relative_v)*dpz/r; // */
+
+				/*fx[i] = fx[i] + ((dD*dpx>0)?1:-1)*(fabs((dD)*k_const*dpx/r) - dampening*fabs(relative_v));
 				fy[i] = fy[i] + ((dD*dpy>0)?1:-1)*(fabs((dD)*k_const*dpy/r) - dampening*fabs(relative_v));
 				fz[i] = fz[i] + ((dD*dpz>0)?1:-1)*(fabs((dD)*k_const*dpz/r) - dampening*fabs(relative_v));
 			                                                      
 				fx[j] = fx[j] - ((dD*dpx>0)?1:-1)*(fabs((dD)*k_const*dpx/r) - dampening*fabs(relative_v));
 				fy[j] = fy[j] - ((dD*dpy>0)?1:-1)*(fabs((dD)*k_const*dpy/r) - dampening*fabs(relative_v));
-				fz[j] = fz[j] - ((dD*dpz>0)?1:-1)*(fabs((dD)*k_const*dpz/r) - dampening*fabs(relative_v));
+				fz[j] = fz[j] - ((dD*dpz>0)?1:-1)*(fabs((dD)*k_const*dpz/r) - dampening*fabs(relative_v)); // */
+				// Ideally ensures that the dampening never reverses the direction of the force.
+				// Does not work.
 				
 				if(j == 6 && time > 100*DT){
 					printf(
@@ -245,13 +311,9 @@ dpx, dpy, dpz, dvx, dvy, dvz, relative_v); // */
 		
 		//Update velocity
 		for(i = 0; i < N; i++){
-			if(!anchorx[i]){
+			if(!anchor[i]){
 				vx[i] = vx[i] + fx[i]*dt;
-			}
-			if(!anchorx[i]){
 				vy[i] = vy[i] + fy[i]*dt;
-			}
-			if(!anchorx[i]){
 				vz[i] = vz[i] + fz[i]*dt;
 			}
 		}// */
@@ -259,13 +321,9 @@ dpx, dpy, dpz, dvx, dvy, dvz, relative_v); // */
 		//Move elements
 		for(i=0; i<N; i++)
 		{
-			if(!anchorx[i]){
+			if(!anchor[i]){
 				px[i] = px[i] + vx[i]*dt;
-			}
-			if(!anchory[i]){
 				py[i] = py[i] + vy[i]*dt;
-			}
-			if(!anchorz[i]){
 				pz[i] = pz[i] + vz[i]*dt;
 			}
 		}
