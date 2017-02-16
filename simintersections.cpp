@@ -14,7 +14,7 @@ g++ simintersections.c -o temp -lglut -lm -lGLU -lGL -std=c++11
 
 #define PI 3.141592654
 
-#define N 100
+#define N 11
 #define MAXCONNECTIONS 10
 
 #define XWindowSize 600
@@ -31,12 +31,12 @@ g++ simintersections.c -o temp -lglut -lm -lGLU -lGL -std=c++11
 #define DRAW 10
 
 //std::random_device generator;
-std::uniform_real_distribution<float> unif_dist(0.0,1.0);// */
+//std::uniform_real_distribution<float> unif_dist(0.0,1.0);// */
 
 // Globals
 double px[N], py[N], pz[N], vx[N], vy[N], vz[N], fx[N], fy[N], fz[N], mass[N], radii[N], G_const, H_const, p_const, q_const, k_const, k_anchor, rod_proportion, dampening;
 
-int 	conn_index[N]; 		//List of where to look in i_conns for connections.
+int 	conn_index[N+1]; 		//List of where to look in i_conns for connections.
 int 	*i_conns;	//List of nodes connected at appropriate index.
 double 	*i_kconst;	//List of "springiness" constant associated with the above connections.
 double  *i_lengths;	//List of default lengths for the above connections.*/
@@ -66,7 +66,7 @@ i_lengths will also have information about connections, like i_kconst, but the e
 
 bool anchor[N];	//Establishes whether each node is anchored.
 
-/*void create_connections(){
+void create_connections(){
 
 	int index = 0;
 	int numconns;
@@ -80,18 +80,26 @@ bool anchor[N];	//Establishes whether each node is anchored.
 		numconns = 0;
 		for(j = i+1; j < N ; j++){
 			if(!anchor[i] || !anchor[j]){
-				if(unif_dist(generator) < prob){
+				if(rand() < prob*RAND_MAX){
 					i_conns[index] = j;
 					index += 1;
 					numconns += 1;
 				}
 			}
 		}
-		if(i!=N-1){
-			conn_index[i+1] = conn_index[i] + numconns;
-			//The next index should begin after all of the connections this node has.
-		}
+		conn_index[i+1] = conn_index[i] + numconns;
+		//The next index should begin after all of the connections this node has.
 	} 
+	for(i = 0 ; i < N ; i++){
+		printf("%d\n", conn_index[i]);
+		for(j = conn_index[i]; j < conn_index[i+1] ; j++){
+			glBegin(GL_LINES);
+				glVertex3f(px[i], py[i], pz[i]);
+				glVertex3f(px[i_conns[j]], py[i_conns[j]], pz[i_conns[j]]);
+			glEnd();
+		}
+	}	// draw connections between nodes
+	
 }// */
 
 void set_initial_conditions()
@@ -181,10 +189,10 @@ void draw_picture()
 	
 	int i, j;
 	for(i = 0 ; i < N ; i++){
-		for(j = i + 1 ; j < N ; j++){
+		for(j = conn_index[i]; j < conn_index[i+1] ; j++){
 			glBegin(GL_LINES);
 				glVertex3f(px[i], py[i], pz[i]);
-				glVertex3f(px[j], py[j], pz[j]);
+				glVertex3f(px[i_conns[j]], py[i_conns[j]], pz[i_conns[j]]);
 			glEnd();
 		}
 	}	// draw connections between nodes
@@ -386,6 +394,7 @@ void reshape(int w, int h)
 int main(int argc, char** argv)
 {
 	printf("pass\n");
+	create_connections();
 	glutInit(&argc,argv);
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_DEPTH | GLUT_RGB);
 	glutInitWindowSize(XWindowSize,YWindowSize);
