@@ -14,7 +14,7 @@ g++ simintersections.cpp -o temp -lglut -lm -lGLU -lGL -std=c++11
 
 #define PI 3.141592654
 
-#define N 11
+#define N 4000
 #define MAXCONNECTIONS 10
 
 #define XWindowSize 600
@@ -85,7 +85,7 @@ void create_connections(){
 	printf("pass0");
 	int index = 0;
 	int numconns;
-	float prob = 0.50;
+	float prob = 0.002;
 	double kconst, length;
 	
 	printf("pass1");
