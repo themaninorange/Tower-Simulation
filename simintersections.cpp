@@ -1,7 +1,7 @@
 /*
 Joseph Brown
 
-g++ simintersections.c -o temp -lglut -lm -lGLU -lGL -std=c++11
+g++ simintersections.cpp -o temp -lglut -lm -lGLU -lGL -std=c++11
 */
 
 #include <GL/glut.h>
