@@ -14,7 +14,7 @@ g++ simintersections.cpp -o temp -lglut -lm -lGLU -lGL -std=c++11
 
 #define PI 3.141592654
 
-#define N 4000
+#define N 400
 #define MAXCONNECTIONS 10
 
 #define XWindowSize 600
@@ -30,6 +30,9 @@ g++ simintersections.cpp -o temp -lglut -lm -lGLU -lGL -std=c++11
 #define ALLMASS 10
 #define DRAW 10
 
+#define rnd( x ) (x * rand() / RAND_MAX)
+
+using namespace std;
 //std::random_device generator;
 //std::uniform_real_distribution<float> unif_dist(0.0,1.0);// */
 
@@ -85,7 +88,7 @@ void create_connections(){
 	printf("pass0");
 	int index = 0;
 	int numconns;
-	float prob = 0.002;
+	float prob = 0.022;
 	double kconst, length;
 	
 	printf("pass1");
@@ -99,6 +102,8 @@ void create_connections(){
 			if(!anchor[i] || !anchor[j]){
 				if(rand() < prob*RAND_MAX){
 					i_conns[index] = j;
+					i_kconst[index] = rnd(10.0)+ 1;
+					i_lengths[index] = rnd(0.1)+ 0.2;
 					index += 1;
 					numconns += 1;
 				}
@@ -107,21 +112,23 @@ void create_connections(){
 		conn_index[i+1] = conn_index[i] + numconns;
 		//The next index should begin after all of the connections this node has.
 	} 
-	for(i = 0 ; i < N ; i++){
+	/*for(i = 0 ; i < N ; i++){
 		for(j = conn_index[i]; j < conn_index[i+1] ; j++){
 			printf("node1: %d\nnode2: %d\n\n", i, i_conns[j]);
 		}
-	}	// draw connections between nodes
+	}// */
 	
 }// */
 
 void set_initial_conditions()
 {
+	create_connections();
 	G_const = 1;
 	k_const = 1;
 	k_anchor = 4000;
 	rod_proportion = 10;
-	dampening = 0.03;	int i;
+	dampening = 0.03;
+	int i, j;
 	for(i = 0; i < N; i++){
 		mass[i] = ALLMASS;
 	}	//Assigns masses to spheres.
@@ -146,7 +153,10 @@ void set_initial_conditions()
 		vy[i] = 0;
 		vz[i] = 0;
 
-		mass[i] = 10000;
+		for(j = conn_index[i]; j < conn_index[i+1]; j++){
+			i_lengths[j] = 2.0;
+			i_kconst[j] = 500;
+		}		
 	}
 	
 	for(i = 0; i < N; i++){
@@ -217,43 +227,6 @@ void draw_picture()
 		glutSolidSphere(radii[i],20,20);
 		glPopMatrix();
 	}	// draw intersections
-
-/*glBegin(GL_TRIANGLES);           // Begin drawing the pyramid with 4 triangles
-      // Front
-      glColor3f(1.0f, 0.0f, 0.0f);     // Red
-      glVertex3f( 0.0f, 1.0f, 0.0f); 
-      glColor3f(0.0f, 0.0f, 1.0f);     // Blue
-      glVertex3f(1.0f, -1.0f, 1.0f);
-      glColor3f(0.0f, 1.0f, 0.0f);     // Green
-      glVertex3f(-1.0f, -1.0f, 1.0f);
- 
-      // Right
-      glColor3f(1.0f, 0.0f, 0.0f);     // Red
-      glVertex3f(0.0f, 1.0f, 0.0f);
-      glColor3f(0.0f, 0.0f, 1.0f);     // Blue
-      glVertex3f(1.0f, -1.0f, 1.0f);
-      glColor3f(0.0f, 1.0f, 0.0f);     // Green
-      glVertex3f(1.0f, -1.0f, -1.0f);
- 
-      // Back
-      glColor3f(1.0f, 0.0f, 0.0f);     // Red
-      glVertex3f(0.0f, 1.0f, 0.0f);
-      glColor3f(0.0f, 1.0f, 0.0f);     // Green
-      glVertex3f(1.0f, -1.0f, -1.0f);
-      glColor3f(0.0f, 0.0f, 1.0f);     // Blue
-      glVertex3f(-1.0f, -1.0f, -1.0f);
- 
-      // Left
-      glColor3f(1.0f,0.0f,0.0f);       // Red
-      glVertex3f( 0.0f, 1.0f, 0.0f);
-      glColor3f(0.0f,0.0f,1.0f);       // Blue
-      glVertex3f(-1.0f,-1.0f,-1.0f);
-      glColor3f(0.0f,1.0f,0.0f);       // Green
-      glVertex3f(-1.0f,-1.0f, 1.0f);
-glEnd();   // Done drawing the pyramid */
-	
-	
-	glutSwapBuffers();
 }
 
 double dot_prod(double x1, double y1, double z1, double x2, double y2, double z2){
@@ -264,131 +237,91 @@ int n_body()
 {
 	double fx[N], fy[N], fz[N], dvx, dvy, dvz, dpx, dpy, dpz, rp1, rq1, feynFac, dD; 
 	double dt = DT;
-	int    tdraw = 0; 
-	int    tprint = 0;
 	double time = 0.0;
 	int    i,j, node2;
 	double r, relative_v;	
 	dt = DT;
 
-	while(time < STOP_TIME)
+	for(i=0; i<N; i++)
 	{
-		for(i=0; i<N; i++)
-		{
-			fx[i] = 0.0;
-			fy[i] = 0.0;
-			fz[i] = 0.0;
+		fx[i] = 0.0;
+		fy[i] = 0.0;
+		fz[i] = 0.0;
+	}
+
+	//Get forces
+	for(i = 0 ; i < N ; i++){
+		for(j = conn_index[i]; j < conn_index[i+1] ; j++){
+		//iterate through all nodes connected to node i
+
+			node2 = i_conns[j];
+			
+			dpx = px[node2] - px[i];
+			dpy = py[node2] - py[i];
+			dpz = pz[node2] - pz[i];
+			//determine relative position
+
+			dvx = vx[node2] - vx[i];
+			dvy = vy[node2] - vy[i];
+			dvz = vz[node2] - vz[i];
+			//determine relative velocity
+
+			r = sqrt(dpx*dpx+dpy*dpy+dpz*dpz);
+			//magnitude of relative position
+
+			relative_v = dot_prod(dpx,dpy,dpz,dvx,dvy,dvz)/r;
+			//magnitude of relative velocity,
+			// projected onto the relative position.
+			//I.e., relative velocity along the spring.
+
+			dD= r - i_lengths[j];
+			//difference between relative position and default length of spring
+			
+			fx[i] = fx[i] + (dD*i_kconst[j] + dampening*relative_v)*dpx/r;
+			fy[i] = fy[i] + (dD*i_kconst[j] + dampening*relative_v)*dpy/r;
+			fz[i] = fz[i] + (dD*i_kconst[j] + dampening*relative_v)*dpz/r;
+		                                                                 
+			fx[node2] = fx[node2] - (dD*i_kconst[j] + dampening*relative_v)*dpx/r;
+			fy[node2] = fy[node2] - (dD*i_kconst[j] + dampening*relative_v)*dpy/r;
+			fz[node2] = fz[node2] - (dD*i_kconst[j] + dampening*relative_v)*dpz/r; // */
 		}
-
-		//Get forces
-		for(i = 0 ; i < N ; i++){
-			for(j = conn_index[i]; j < conn_index[i+1] ; j++){
-				node2 = i_conns[j];
-				
-				dpx = px[node2] - px[i];
-				dpy = py[node2] - py[i];
-				dpz = pz[node2] - pz[i];
-				
-				dvx = vx[node2] - vx[i];
-				dvy = vy[node2] - vy[i];
-				dvz = vz[node2] - vz[i];
-
-				r = sqrt(dpx*dpx+dpy*dpy+dpz*dpz);
-
-				relative_v = dot_prod(dpx,dpy,dpz,dvx,dvy,dvz)/r;
-
-				dD= r - (radii[i]+radii[node2])*rod_proportion;
-				
-				fx[i] = fx[i] + (dD*k_const + dampening*relative_v)*dpx/r;
-				fy[i] = fy[i] + (dD*k_const + dampening*relative_v)*dpy/r;
-				fz[i] = fz[i] + (dD*k_const + dampening*relative_v)*dpz/r;
-			                                                                 
-				fx[node2] = fx[node2] - (dD*k_const + dampening*relative_v)*dpx/r;
-				fy[node2] = fy[node2] - (dD*k_const + dampening*relative_v)*dpy/r;
-				fz[node2] = fz[node2] - (dD*k_const + dampening*relative_v)*dpz/r; // */
-
-				/*fx[i] = fx[i] + ((dD*dpx>0)?1:-1)*(fabs((dD)*k_const*dpx/r) - dampening*fabs(relative_v));
-				fy[i] = fy[i] + ((dD*dpy>0)?1:-1)*(fabs((dD)*k_const*dpy/r) - dampening*fabs(relative_v));
-				fz[i] = fz[i] + ((dD*dpz>0)?1:-1)*(fabs((dD)*k_const*dpz/r) - dampening*fabs(relative_v));
-			                                                      
-				fx[node2] = fx[node2] - ((dD*dpx>0)?1:-1)*(fabs((dD)*k_const*dpx/r) - dampening*fabs(relative_v));
-				fy[node2] = fy[node2] - ((dD*dpy>0)?1:-1)*(fabs((dD)*k_const*dpy/r) - dampening*fabs(relative_v));
-				fz[node2] = fz[node2] - ((dD*dpz>0)?1:-1)*(fabs((dD)*k_const*dpz/r) - dampening*fabs(relative_v)); // */
-				// Ideally ensures that the dampening never reverses the direction of the force.
-				// Does not work.
-				
-				if(j == 6 && time > 100*DT){
-					printf(
-"dampening: %.3f\nrelvel: %.3f\nprimary force: %.3f\ntruthiness: %d\nr: %.3f\n", 
-((dD>0)?1:-1)*dampening*relative_v, relative_v, k_const*dD, ((dD>0)?1:-1), r); // */
-					/*printf(
-"dpx: %.3f\ndpy: %.3f\ndpz: %.3f\ndvx: %.3f\ndvy: %.3f\ndvz: %.3f\nrelative_v: %.3f\n", 
-dpx, dpy, dpz, dvx, dvy, dvz, relative_v); // */
-
-					time = 0.0;
-				}
-			}
+	}
+	
+	//Update velocity
+	for(i = 0; i < N; i++){
+		if(!anchor[i]){
+			vx[i] = vx[i] + fx[i]*dt;
+			vy[i] = vy[i] + fy[i]*dt;
+			vz[i] = vz[i] + fz[i]*dt;
 		}
-		
-		//Update velocity
-		for(i = 0; i < N; i++){
-			if(!anchor[i]){
-				vx[i] = vx[i] + fx[i]*dt;
-				vy[i] = vy[i] + fy[i]*dt;
-				vz[i] = vz[i] + fz[i]*dt;
-			}
-		}// */
-		
-		//Move elements
-		for(i=0; i<N; i++)
-		{
-			if(!anchor[i]){
-				px[i] = px[i] + vx[i]*dt;
-				py[i] = py[i] + vy[i]*dt;
-				pz[i] = pz[i] + vz[i]*dt;
-			}
+	}// */
+	
+	//Move elements
+	for(i=0; i<N; i++)
+	{
+		if(!anchor[i]){
+			px[i] = px[i] + vx[i]*dt;
+			py[i] = py[i] + vy[i]*dt;
+			pz[i] = pz[i] + vz[i]*dt;
 		}
-
-		if(tdraw == DRAW) 
-		{
-			draw_picture();
-			tdraw = 0;
-		}
-
-		time += dt;
-		tdraw++;
-		tprint++;
 	}
 }
 
-void control()
-{	
-	int    tdraw = 0;
-	double  time = 0.0;
-
-	glClear(GL_COLOR_BUFFER_BIT);
-	glClear(GL_DEPTH_BUFFER_BIT);
-
-	set_initial_conditions();
-	
-	draw_picture();
-	
+void update(int value){
 	n_body();
-	
-	printf("\n DONE \n");
-	while(1);
+	glutPostRedisplay();
+	glutTimerFunc(16, update, 0);
 }
+
 
 void Display(void)
 {
-	gluLookAt(0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
-	glClear(GL_COLOR_BUFFER_BIT);
-	glClear(GL_DEPTH_BUFFER_BIT);
+	//gluLookAt(0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
 	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-
+	
+	draw_picture();
 	glutSwapBuffers();
-	glFlush();
-	control();
+	glFlush();// */
 }
 
 void reshape(int w, int h)
@@ -404,16 +337,14 @@ void reshape(int w, int h)
 	glMatrixMode(GL_MODELVIEW);
 }
 
-int main(int argc, char** argv)
+int main(int argc, char *argv[])
 {
 	AllocateMemory();
-	printf("pass10");
+
 	glutInit(&argc,argv);
-	printf("pass10");
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_DEPTH | GLUT_RGB);
 	glutInitWindowSize(XWindowSize,YWindowSize);
 	glutInitWindowPosition(0,0);
-	printf("pass10");
 	glutCreateWindow("2 Body 3D");
 	GLfloat light_position[] = {1.0, 1.0, 1.0, 0.0};
 	GLfloat light_ambient[]  = {0.0, 0.0, 0.0, 1.0};
@@ -424,7 +355,6 @@ int main(int argc, char** argv)
 	GLfloat mat_shininess[]  = {10.0};
 	glClearColor(0.0, 0.0, 0.0, 0.0);
 	glShadeModel(GL_SMOOTH);
-	printf("pass10");
 	glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
 	glLightfv(GL_LIGHT0, GL_POSITION, light_position);
 	glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient);
@@ -437,11 +367,15 @@ int main(int argc, char** argv)
 	glEnable(GL_LIGHT0);
 	glEnable(GL_COLOR_MATERIAL);
 	glEnable(GL_DEPTH_TEST);
-	printf("pass10");
-	create_connections();
+
+	set_initial_conditions();
+	gluLookAt(0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
 	glutDisplayFunc(Display);
+	glutTimerFunc(16, update, 0);
 	glutReshapeFunc(reshape);
+
 	glutMainLoop();
+
 	return 0;
 }
 
