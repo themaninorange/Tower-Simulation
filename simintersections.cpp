@@ -36,7 +36,7 @@ g++ simintersections.cpp -o temp -lglut -lm -lGLU -lGL -std=c++11
 // Globals
 double px[N], py[N], pz[N], vx[N], vy[N], vz[N], fx[N], fy[N], fz[N], mass[N], radii[N], G_const, H_const, p_const, q_const, k_const, k_anchor, rod_proportion, dampening;
 
-int 	conn_index[N+1]; 		//List of where to look in i_conns for connections.
+int 	conn_index[N+1];//List of where to look in i_conns for connections.
 int 	*i_conns;	//List of nodes connected at appropriate index.
 double 	*i_kconst;	//List of "springiness" constant associated with the above connections.
 double  *i_lengths;	//List of default lengths for the above connections.*/
@@ -66,16 +66,33 @@ i_lengths will also have information about connections, like i_kconst, but the e
 
 bool anchor[N];	//Establishes whether each node is anchored.
 
+void AllocateMemory(){
+	if(N < 20){
+		i_conns = (int*)malloc(N*N*sizeof(int));
+		i_kconst = (double*)malloc(N*N*sizeof(double));
+		i_lengths = (double*)malloc(N*N*sizeof(double));
+
+	}
+	else{
+		i_conns = (int*)malloc(20*N*sizeof(int));
+		i_kconst = (double*)malloc(20*N*sizeof(double));
+		i_lengths = (double*)malloc(20*N*sizeof(double));
+	}
+}
+
 void create_connections(){
 
+	printf("pass0");
 	int index = 0;
 	int numconns;
-	float prob = 0.75;
+	float prob = 0.50;
 	double kconst, length;
 	
-	
+	printf("pass1");
+	srand(time(NULL));
 	
 	int i,j;
+	printf("pass2");
 	for(i = 0 ; i < N ; i++){
 		numconns = 0;
 		for(j = i+1; j < N ; j++){
@@ -91,12 +108,8 @@ void create_connections(){
 		//The next index should begin after all of the connections this node has.
 	} 
 	for(i = 0 ; i < N ; i++){
-		printf("%d\n", conn_index[i]);
 		for(j = conn_index[i]; j < conn_index[i+1] ; j++){
-			glBegin(GL_LINES);
-				glVertex3f(px[i], py[i], pz[i]);
-				glVertex3f(px[i_conns[j]], py[i_conns[j]], pz[i_conns[j]]);
-			glEnd();
+			printf("node1: %d\nnode2: %d\n\n", i, i_conns[j]);
 		}
 	}	// draw connections between nodes
 	
@@ -254,7 +267,7 @@ int n_body()
 	int    tdraw = 0; 
 	int    tprint = 0;
 	double time = 0.0;
-	int    i,j;
+	int    i,j, node2;
 	double r, relative_v;	
 	dt = DT;
 
@@ -268,39 +281,39 @@ int n_body()
 		}
 
 		//Get forces
-		for(i=0; i<N; i++)
-		{
-			for(j=i+1; j<N; j++)
-			{
-				dpx = px[j] - px[i];
-				dpy = py[j] - py[i];
-				dpz = pz[j] - pz[i];
+		for(i = 0 ; i < N ; i++){
+			for(j = conn_index[i]; j < conn_index[i+1] ; j++){
+				node2 = i_conns[j];
 				
-				dvx = vx[j] - vx[i];
-				dvy = vy[j] - vy[i];
-				dvz = vz[j] - vz[i];
+				dpx = px[node2] - px[i];
+				dpy = py[node2] - py[i];
+				dpz = pz[node2] - pz[i];
+				
+				dvx = vx[node2] - vx[i];
+				dvy = vy[node2] - vy[i];
+				dvz = vz[node2] - vz[i];
 
 				r = sqrt(dpx*dpx+dpy*dpy+dpz*dpz);
 
 				relative_v = dot_prod(dpx,dpy,dpz,dvx,dvy,dvz)/r;
 
-				dD= r - (radii[i]+radii[j])*rod_proportion;
+				dD= r - (radii[i]+radii[node2])*rod_proportion;
 				
 				fx[i] = fx[i] + (dD*k_const + dampening*relative_v)*dpx/r;
 				fy[i] = fy[i] + (dD*k_const + dampening*relative_v)*dpy/r;
 				fz[i] = fz[i] + (dD*k_const + dampening*relative_v)*dpz/r;
 			                                                                 
-				fx[j] = fx[j] - (dD*k_const + dampening*relative_v)*dpx/r;
-				fy[j] = fy[j] - (dD*k_const + dampening*relative_v)*dpy/r;
-				fz[j] = fz[j] - (dD*k_const + dampening*relative_v)*dpz/r; // */
+				fx[node2] = fx[node2] - (dD*k_const + dampening*relative_v)*dpx/r;
+				fy[node2] = fy[node2] - (dD*k_const + dampening*relative_v)*dpy/r;
+				fz[node2] = fz[node2] - (dD*k_const + dampening*relative_v)*dpz/r; // */
 
 				/*fx[i] = fx[i] + ((dD*dpx>0)?1:-1)*(fabs((dD)*k_const*dpx/r) - dampening*fabs(relative_v));
 				fy[i] = fy[i] + ((dD*dpy>0)?1:-1)*(fabs((dD)*k_const*dpy/r) - dampening*fabs(relative_v));
 				fz[i] = fz[i] + ((dD*dpz>0)?1:-1)*(fabs((dD)*k_const*dpz/r) - dampening*fabs(relative_v));
 			                                                      
-				fx[j] = fx[j] - ((dD*dpx>0)?1:-1)*(fabs((dD)*k_const*dpx/r) - dampening*fabs(relative_v));
-				fy[j] = fy[j] - ((dD*dpy>0)?1:-1)*(fabs((dD)*k_const*dpy/r) - dampening*fabs(relative_v));
-				fz[j] = fz[j] - ((dD*dpz>0)?1:-1)*(fabs((dD)*k_const*dpz/r) - dampening*fabs(relative_v)); // */
+				fx[node2] = fx[node2] - ((dD*dpx>0)?1:-1)*(fabs((dD)*k_const*dpx/r) - dampening*fabs(relative_v));
+				fy[node2] = fy[node2] - ((dD*dpy>0)?1:-1)*(fabs((dD)*k_const*dpy/r) - dampening*fabs(relative_v));
+				fz[node2] = fz[node2] - ((dD*dpz>0)?1:-1)*(fabs((dD)*k_const*dpz/r) - dampening*fabs(relative_v)); // */
 				// Ideally ensures that the dampening never reverses the direction of the force.
 				// Does not work.
 				
@@ -393,12 +406,14 @@ void reshape(int w, int h)
 
 int main(int argc, char** argv)
 {
-	printf("pass\n");
-	create_connections();
+	AllocateMemory();
+	printf("pass10");
 	glutInit(&argc,argv);
+	printf("pass10");
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_DEPTH | GLUT_RGB);
 	glutInitWindowSize(XWindowSize,YWindowSize);
 	glutInitWindowPosition(0,0);
+	printf("pass10");
 	glutCreateWindow("2 Body 3D");
 	GLfloat light_position[] = {1.0, 1.0, 1.0, 0.0};
 	GLfloat light_ambient[]  = {0.0, 0.0, 0.0, 1.0};
@@ -409,6 +424,7 @@ int main(int argc, char** argv)
 	GLfloat mat_shininess[]  = {10.0};
 	glClearColor(0.0, 0.0, 0.0, 0.0);
 	glShadeModel(GL_SMOOTH);
+	printf("pass10");
 	glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
 	glLightfv(GL_LIGHT0, GL_POSITION, light_position);
 	glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient);
@@ -421,6 +437,8 @@ int main(int argc, char** argv)
 	glEnable(GL_LIGHT0);
 	glEnable(GL_COLOR_MATERIAL);
 	glEnable(GL_DEPTH_TEST);
+	printf("pass10");
+	create_connections();
 	glutDisplayFunc(Display);
 	glutReshapeFunc(reshape);
 	glutMainLoop();
