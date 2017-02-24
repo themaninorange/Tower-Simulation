@@ -14,16 +14,17 @@ nvcc simintersections.cu -o temp -lglut -lm -lGLU -lGL -std=c++11
 
 #define PI 3.141592654
 
-#define N 400
+#define N 2000
+#define PROB 0.01
 #define MAXCONNECTIONS 20
 
 #define XWindowSize 600
 #define YWindowSize 600
 
-#define STOP_TIME 1000.0
+#define STOP_TIME 20.0
 #define DT        0.005
 
-#define GRAVITY 0.1 
+#define GRAVITY 1 
 /*
 #define MASSBODY1 10.0
 #define MASSBODY2 10.0*/
@@ -37,7 +38,7 @@ using namespace std;
 //std::uniform_real_distribution<float> unif_dist(0.0,1.0);// */
 
 // Globals
-double G_const, H_const, p_const, q_const, k_const, k_anchor, rod_proportion, dampening;
+double G_const, H_const, p_const, q_const, k_const, k_anchor, rod_proportion, dampening, timerunning;
 
 int numblocks, blocksize;
 
@@ -61,6 +62,8 @@ int 	*conn_index_GPU;	//List of where to look in i_conns for connections.
 int 	*i_conns_GPU;		//List of nodes connected at appropriate index.
 double 	*i_kconst_GPU;		//List of "springiness" constant associated with the above connections.
 double  *i_lengths_GPU;		//List of default lengths for the above connections.*/
+
+bool written = false;
 
 /*
 EXAMPLE:
@@ -121,9 +124,10 @@ void create_connections(){
 
 	int index = 0;
 	int numconns;
-	float prob = 0.02;
+	float prob = PROB;
 
 	srand(time(NULL));
+	//srand(9001);
 	
 	int i,j;
 	conn_index_CPU[0] = 0;
@@ -151,6 +155,7 @@ void set_initial_conditions()
 {
 	blocksize = 1024;
 	numblocks = (N - 1)/blocksize + 1;
+	timerunning = 0;
 	
 	create_connections();
 	G_const = 1;
@@ -243,8 +248,18 @@ void set_initial_conditions()
 		cudaMemcpy(i_lengths_GPU, i_lengths_CPU, 20*N*sizeof(double), cudaMemcpyHostToDevice);
 	}
 	
-	cudaDeviceSynchronize();
+	//cudaDeviceSynchronize();
 
+}
+
+void displayText( float x, float y, float z, int r, int g, int b, const char *string ) {
+	int j = strlen( string );
+ 
+	glColor3f( r, g, b );
+	glRasterPos3f( x, y, z);
+	for( int i = 0; i < j; i++ ) {
+		glutBitmapCharacter( GLUT_BITMAP_TIMES_ROMAN_24, string[i] );
+	}
 }
 
 void draw_picture()
@@ -280,6 +295,13 @@ void draw_picture()
 		glutSolidSphere(cnx_CPU[i].radius,20,20);
 		glPopMatrix();
 	}	// draw intersections
+	
+	char timestring[10] ;
+		
+	snprintf(timestring, 10, "%4.4f", timerunning);
+	
+	glClear(GL_DEPTH_BUFFER_BIT);
+	displayText( 1, -1.9, 0, 1.0, 1.0, 1.0, timestring);
 }
 
 double dot_prod(double x1, double y1, double z1, double x2, double y2, double z2){
@@ -290,28 +312,47 @@ __device__ double dev_dot_prod(double x1, double y1, double z1, double x2, doubl
 	return(x1*x2+y1*y2+z1*z2);
 }
 
-__global__ void stepForward(Connection *cnx, int *conns,  double *kconst,
+__device__ double atomicAdd(double* address, double val)
+{
+    unsigned long long int* address_as_ull =
+                             (unsigned long long int*)address;
+    unsigned long long int old = *address_as_ull, assumed;
+    do {
+        assumed = old;
+old = atomicCAS(address_as_ull, assumed,
+                        __double_as_longlong(val +
+                               __longlong_as_double(assumed)));
+    } while (assumed != old);
+    return __longlong_as_double(old);
+} // source: http://stackoverflow.com/questions/12626096/why-has-atomicadd-not-been-implemented-for-doubles
+
+__global__ void setForces(Connection *cnx){
+	
+	int i = threadIdx.x + blockDim.x*blockIdx.x;
+
+	if(i < N){
+	       	int i = threadIdx.x + blockDim.x*blockIdx.x;
+		cnx[i].fx = 0.0;
+		cnx[i].fy = -GRAVITY;	//Throw gravity into the mix
+		cnx[i].fz = 0.0;
+	}
+}
+
+__global__ void calcForces(Connection *cnx, int *conns,  double *kconst,
 			 //(cnx_GPU,         i_conns_GPU, i_kconst_GPU, 
 
 			    double *lengths, int *index,     double dampening) {
 			 // i_lengths_GPU,   conn_index_GPU, dampening)
 
-	int pos = threadIdx.x + blockDim.x*blockIdx.x;
+	int i = threadIdx.x + blockDim.x*blockIdx.x;
 
-	if(pos < N){
+	if(i < N){
+	
 		double dvx, dvy, dvz, dpx, dpy, dpz, dD; 
-		double dt = DT;
-		int    i,j, node2;
+		int    j, node2;
 		double r, relative_v;	
-		dt = DT;
-        
-		cnx[pos].fx = 0.0;
-		cnx[pos].fy = -GRAVITY;	//Throw gravity into the mix
-		cnx[pos].fz = 0.0;
-        
-		__syncthreads();
 		
-		for(j = index[pos]; j < index[pos+1]; j++){
+		for(j = index[i]; j < index[i+1]; j++){
 		//iterate through all nodes connected to this position.
         
 			node2 = conns[j];
@@ -336,19 +377,34 @@ __global__ void stepForward(Connection *cnx, int *conns,  double *kconst,
         
 			dD= r - lengths[j];
 			//difference between relative position and default length of spring
+		
+			atomicAdd(&(cnx[i].fx), (dD*kconst[j] + dampening*relative_v)*dpx/r);
+			atomicAdd(&(cnx[i].fy), (dD*kconst[j] + dampening*relative_v)*dpy/r);
+			atomicAdd(&(cnx[i].fz), (dD*kconst[j] + dampening*relative_v)*dpz/r);
 			
-			cnx[i].fx = cnx[i].fx + (dD*kconst[j] + dampening*relative_v)*dpx/r;
+		/*	cnx[i].fx = cnx[i].fx + (dD*kconst[j] + dampening*relative_v)*dpx/r;
 			cnx[i].fy = cnx[i].fy + (dD*kconst[j] + dampening*relative_v)*dpy/r;
-			cnx[i].fz = cnx[i].fz + (dD*kconst[j] + dampening*relative_v)*dpz/r;
-			//adds the appropriate forces from this particle interaction to i
-		                                                                 
-			cnx[node2].fx = cnx[node2].fx - (dD*kconst[j] + dampening*relative_v)*dpx/r;
+			cnx[i].fz = cnx[i].fz + (dD*kconst[j] + dampening*relative_v)*dpz/r;*/
+			//adds the appropriate forces from this particle interaction to i atomically
+		                           
+                       	atomicAdd(&(cnx[node2].fx), -(dD*kconst[j] + dampening*relative_v)*dpx/r);
+			atomicAdd(&(cnx[node2].fy), -(dD*kconst[j] + dampening*relative_v)*dpy/r);
+			atomicAdd(&(cnx[node2].fz), -(dD*kconst[j] + dampening*relative_v)*dpz/r);
+
+		/*	cnx[node2].fx = cnx[node2].fx - (dD*kconst[j] + dampening*relative_v)*dpx/r;
 			cnx[node2].fy = cnx[node2].fy - (dD*kconst[j] + dampening*relative_v)*dpy/r;
-			cnx[node2].fz = cnx[node2].fz - (dD*kconst[j] + dampening*relative_v)*dpz/r; // 
-			//adds the appropriate forces from this particle interaction to i
+			cnx[node2].fz = cnx[node2].fz - (dD*kconst[j] + dampening*relative_v)*dpz/r; // */ 
+			//adds the appropriate forces from this particle interaction to j atomically
 		}			
-		__syncthreads(); 
-        
+	}
+}
+
+__global__ void calcVP(Connection *cnx) {
+
+	int i = threadIdx.x + blockDim.x*blockIdx.x;
+	double dt = DT;
+	if(i < N){
+
 		if(!cnx[i].anchor){
 			cnx[i].vx = cnx[i].vx + cnx[i].fx*dt;
 			cnx[i].vy = cnx[i].vy + cnx[i].fy*dt;
@@ -364,10 +420,9 @@ __global__ void stepForward(Connection *cnx, int *conns,  double *kconst,
 	}
 } // */
 
-void n_body()
+void n_body_force()
 {
 	double dvx, dvy, dvz, dpx, dpy, dpz, dD; 
-	double dt = DT;
 	int    i,j, node2;
 	double r, relative_v;
 	//int debug_int = 0;	
@@ -375,7 +430,7 @@ void n_body()
 	for(i=0; i<N; i++)
 	{
 		cnx_CPU[i].fx = 0.0;
-		cnx_CPU[i].fy = 0.0;
+		cnx_CPU[i].fy = -GRAVITY;
 		cnx_CPU[i].fz = 0.0;
 	}
 
@@ -417,10 +472,15 @@ void n_body()
 			cnx_CPU[node2].fz = cnx_CPU[node2].fz - (dD*i_kconst_CPU[j] + dampening*relative_v)*dpz/r;
 			//adds the appropriate forces from this particle interaction to i
 		}
-
-		cnx_CPU[i].fy = cnx_CPU[i].fy - GRAVITY;
 	}
 	
+}// */
+
+void n_body_VP(){
+	
+	double dt = DT;
+	int i;
+
 	//Update velocity
 	for(i = 0; i < N; i++){
 		if(!cnx_CPU[i].anchor){
@@ -439,25 +499,49 @@ void n_body()
 			cnx_CPU[i].pz = cnx_CPU[i].pz + cnx_CPU[i].vz*dt;
 		}
 	}
-	
-}// */
+}
+/*
+double fastest_cnxn(Connection cnx){
+	int i;
+	double max_fast
+	for(i = 0; i < N; i++){
+		
+	}
+	return 
+}*/
 
 void update(int value){
 
 
-	//n_body();
-	//cudaMemcpy(cnx_GPU, cnx_CPU, N*sizeof(Connection), cudaMemcpyHostToDevice);
-	cudaDeviceSynchronize();
-
-	stepForward<<<numblocks, blocksize>>>(cnx_GPU, i_conns_GPU, i_kconst_GPU, i_lengths_GPU, conn_index_GPU, dampening);
-	cudaDeviceSynchronize();
-	cudaMemcpy(cnx_CPU, cnx_GPU, N*sizeof(Connection), cudaMemcpyDeviceToHost);
-	cudaDeviceSynchronize();
-
-	glutPostRedisplay();
-	glutTimerFunc(1, update, 0);
-	printf("cnx[9] velocity: %.3f\n", cnx_CPU[9].vy);
-
+	if(timerunning < STOP_TIME){
+		//n_body_force();
+		//n_body_VP();
+		//cudaMemcpy(cnx_GPU, cnx_CPU, N*sizeof(Connection), cudaMemcpyHostToDevice);
+		//cudaDeviceSynchronize();
+	
+		setForces<<<numblocks, blocksize>>>(cnx_GPU);
+		calcForces<<<numblocks, blocksize>>>(cnx_GPU, i_conns_GPU, i_kconst_GPU, i_lengths_GPU, 	conn_index_GPU, dampening);
+		calcVP<<<numblocks, blocksize>>>(cnx_GPU);
+		
+		//cudaDeviceSynchronize();
+		cudaMemcpy(cnx_CPU, cnx_GPU, N*sizeof(Connection), cudaMemcpyDeviceToHost);
+		//cudaDeviceSynchronize();
+	
+		glutPostRedisplay();
+		glutTimerFunc(16, update, 0);
+		//printf("cnx[9] velocity: %.3f\n", cnx_CPU[9].vy);
+		timerunning += DT;
+	}
+/*	else{
+		
+	
+		int i;
+		for(i = 0; i < N; i++){
+ 		    fprintf(fptr, "%s,%d,%d,%d,%d,%d\n", name, mark1, mark2, mark3, mark4, mark5);
+ 		}
+ 		print("Written.\n");
+ 		written = true
+	}*/
 }
 
 void Display(void)
@@ -517,7 +601,7 @@ int main(int argc, char *argv[])
 	set_initial_conditions();
 	gluLookAt(0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
 	glutDisplayFunc(Display);
-	glutTimerFunc(1, update, 0);
+	glutTimerFunc(16, update, 0);
 	glutReshapeFunc(reshape);
 
 	glutMainLoop();
