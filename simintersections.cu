@@ -10,19 +10,23 @@ nvcc simintersections.cu -o temp -lglut -lm -lGLU -lGL -std=c++11
 #include <stdlib.h>
 #include <time.h>
 #include <stdbool.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <random>
 
 #define PI 3.141592654
 
-#define N 2000
-#define PROB 0.01
+#define N 30
+#define PROB 0.5 
 #define MAXCONNECTIONS 20
 
 #define XWindowSize 600
 #define YWindowSize 600
 
-#define STOP_TIME 20.0
+#define STOP_TIME 1.0
 #define DT        0.005
+#define MAXTRIES  50
+#define MAXVEL	  0.1
 
 #define GRAVITY 1 
 /*
@@ -40,7 +44,9 @@ using namespace std;
 // Globals
 double G_const, H_const, p_const, q_const, k_const, k_anchor, rod_proportion, dampening, timerunning;
 
-int numblocks, blocksize;
+int numblocks, blocksize, attempt;
+
+struct stat st = {0};
 
 struct Connection {
 	double px, py, pz;	//Position
@@ -53,15 +59,18 @@ struct Connection {
 
 Connection *cnx_CPU, *cnx_GPU;
 
-int	*conn_index_CPU;	//List of where to look in i_conns for connections.
-int 	*i_conns_CPU;		//List of nodes connected at appropriate index.
-double 	*i_kconst_CPU;		//List of "springiness" constant associated with the above connections.
-double  *i_lengths_CPU;		//List of default lengths for the above connections.*/
+int	*numcon_CPU;
+int	*beami_CPU;
+double	*beamk_CPU;
+double	*beaml_CPU;
 
-int 	*conn_index_GPU;	//List of where to look in i_conns for connections.
-int 	*i_conns_GPU;		//List of nodes connected at appropriate index.
-double 	*i_kconst_GPU;		//List of "springiness" constant associated with the above connections.
-double  *i_lengths_GPU;		//List of default lengths for the above connections.*/
+int	*numcon_GPU;
+int	*beami_GPU;
+double	*beamk_GPU;
+double	*beaml_GPU;
+
+char timestring[16] ;
+char fastnessstring[18] ;	
 
 bool written = false;
 
@@ -91,64 +100,78 @@ i_lengths will also have information about connections, like i_kconst, but the e
 
 
 void AllocateMemory(){
+	
+	printf("passA1\n");
 	cnx_CPU = (Connection*)malloc( sizeof(Connection) * N);
 	cudaMalloc((void**)&cnx_GPU, sizeof(Connection) * N);
-	conn_index_CPU = (int*)malloc(sizeof(int) * (N+1));
-	cudaMalloc((void**)&conn_index_GPU, sizeof(int) * (N+1));
 
-	
+	numcon_CPU  = (int *)malloc(N*sizeof(int));
+	printf("passA2\n");
 
-	if(N < 20){
-		  i_conns_CPU =    (int*)malloc(N*N*sizeof(int));
-		 i_kconst_CPU = (double*)malloc(N*N*sizeof(double));
-		i_lengths_CPU = (double*)malloc(N*N*sizeof(double));	
+	beami_CPU = (int *)malloc(N * MAXCONNECTIONS * sizeof(int));
+        beamk_CPU = (double *)malloc(N * MAXCONNECTIONS * sizeof(double));
+        beaml_CPU = (double *)malloc(N * MAXCONNECTIONS * sizeof(double));
 
-		cudaMalloc(  (void**)&i_conns_GPU, sizeof(int) * N * N);
-		cudaMalloc( (void**)&i_kconst_GPU, sizeof(double) * N * N);
-		cudaMalloc((void**)&i_lengths_GPU, sizeof(double) * N * N);// */
-	}
-	else{
-		  i_conns_CPU =    (int*)malloc(20*N*sizeof(int));
-		 i_kconst_CPU = (double*)malloc(20*N*sizeof(double));
-		i_lengths_CPU = (double*)malloc(20*N*sizeof(double));
+	cudaMalloc((void**)&numcon_GPU, N* sizeof(int));
 
-		cudaMalloc(  (void**)&i_conns_GPU, sizeof(int) * 20 * N);
-		cudaMalloc( (void**)&i_kconst_GPU, sizeof(double) * 20 * N);
-		cudaMalloc((void**)&i_lengths_GPU, sizeof(double) * 20 * N);// */
-
-	}
+        cudaMalloc((void**)&beami_GPU, N * MAXCONNECTIONS * sizeof(int));
+        cudaMalloc((void**)&beamk_GPU, N * MAXCONNECTIONS * sizeof(double));
+        cudaMalloc((void**)&beaml_GPU, N * MAXCONNECTIONS * sizeof(double));
+	printf("passA3\n");
 
 }
 
-void create_connections(){
+void create_beams(){
 
-	int index = 0;
-	int numconns;
 	float prob = PROB;
 
 	srand(time(NULL));
 	//srand(9001);
 	
 	int i,j;
-	conn_index_CPU[0] = 0;
-
 	for(i = 0 ; i < N ; i++){
-		numconns = 0;
-		for(j = i+1; j < N ; j++){
-			if(!cnx_CPU[i].anchor || !cnx_CPU[j].anchor){
-				if((numconns < MAXCONNECTIONS) && (rand() < prob*RAND_MAX)){
-					i_conns_CPU[index] = j;
-					i_kconst_CPU[index] = rnd(10.0) + 1;
-					i_lengths_CPU[index] = rnd(0.1) + 0.2;
-					index += 1;
-					numconns += 1;
-				}
+		numcon_CPU[i] = 0;
+	}
+	
+	for(i = 0 ; i < N ; i++){
+		for(j = i + 1; j < N ; j++){
+			if(((!cnx_CPU[i].anchor) || (!cnx_CPU[j].anchor))&&
+			   (numcon_CPU[i]<MAXCONNECTIONS)&&
+			   (numcon_CPU[j]<MAXCONNECTIONS)&&
+			   (rand() < prob*RAND_MAX)){
+
+				beami_CPU[i*MAXCONNECTIONS + numcon_CPU[i]] = j;
+					//Set which node i is being connected to.
+				
+				if((cnx_CPU[j].anchor)||(cnx_CPU[i].anchor)){
+					beamk_CPU[i*MAXCONNECTIONS + numcon_CPU[i]] = k_anchor;
+					beaml_CPU[i*MAXCONNECTIONS + numcon_CPU[i]] = 2.0;
+	
+				} else {
+					beamk_CPU[i*MAXCONNECTIONS + numcon_CPU[i]] = rnd(10.0f) + 1.0;
+					beaml_CPU[i*MAXCONNECTIONS + numcon_CPU[i]] = rnd(0.1f) + 0.2;
+				} //Create values for the connection just established.
+
+
+				beami_CPU[j*MAXCONNECTIONS + numcon_CPU[j]] = i;
+					//Set which node j is being connected to.
+				beamk_CPU[j*MAXCONNECTIONS + numcon_CPU[j]] = beamk_CPU[i*MAXCONNECTIONS + numcon_CPU[i]];
+				beaml_CPU[j*MAXCONNECTIONS + numcon_CPU[j]] = beaml_CPU[i*MAXCONNECTIONS + numcon_CPU[i]];
+					//Set these the same as the values for i.
+				numcon_CPU[j] += 1;	
+					//Increase number of connections to j by one.	
+				numcon_CPU[i] += 1;	
+					//Increase number of connections to i by one.
 			}
 		}
-		conn_index_CPU[i+1] = conn_index_CPU[i] + numconns;
-		//The next index should begin after all of the connections this node has.
-	} 
-
+	}
+	/*for(i = 0; i < N; i++){
+		for(j = 0; j < numcon_CPU[i]; j++){
+			printf("nodes connected: %d, %d\n", i, beami_CPU[i*MAXCONNECTIONS + j]);	
+			printf("constant:        %.3f\n", beamk_CPU[i*MAXCONNECTIONS + j]);
+			printf("length:          %.3f\n\n", beaml_CPU[i*MAXCONNECTIONS + j]);
+		}
+	}*/
 }// */
 
 void set_initial_conditions()
@@ -156,30 +179,22 @@ void set_initial_conditions()
 	blocksize = 1024;
 	numblocks = (N - 1)/blocksize + 1;
 	timerunning = 0;
-	
-	create_connections();
+	attempt = 0;
+	printf("pass0\n");
 	G_const = 1;
 	k_const = 1;
 	k_anchor = 4000;
 	rod_proportion = 10;
-	dampening = 0.3;
-	int i, j;
-	for(i = 0; i < N; i++){
-		cnx_CPU[i].mass = ALLMASS;
-	}	//Assigns masses to spheres.
-	
+	dampening = 3;
+
+	int i;
+
 	for(i = 0; i < N; i++){
 		cnx_CPU[i].px = 2.0*i/N-1;
 		cnx_CPU[i].py = sqrt(1-cnx_CPU[i].px*cnx_CPU[i].px)*sin(i);
 		cnx_CPU[i].pz = sqrt(1-cnx_CPU[i].px*cnx_CPU[i].px)*cos(i);
-	}	//Initialize spheres around the unit sphere
+	}	//Initialize nodes around the unit sphere
 	
-	/*for(i = 0; i < N; i++){
-		cnx_CPU[i].vx = cnx_CPU[i].py + 0.5;
-		cnx_CPU[i].vy = cnx_CPU[i].pz + 0.5;
-		cnx_CPU[i].vz = cnx_CPU[i].px + 0.5;
-	}// */	//Initialize sphere velocities to something nonzero
-
 	for(i = 0; i < N; i++){
 		cnx_CPU[i].vx = 0;
 		cnx_CPU[i].vy = 0;
@@ -196,60 +211,38 @@ void set_initial_conditions()
 		cnx_CPU[i].vx = 0;
 		cnx_CPU[i].vy = 0;
 		cnx_CPU[i].vz = 0;
+	} // initializes anchors in nearly a hexagon.  labels them anchors.
 
-		for(j = conn_index_CPU[i]; j < conn_index_CPU[i+1]; j++){
 
-
-			i_lengths_CPU[j] = 2.0;
-			i_kconst_CPU[j] = k_anchor;
-		}		
-	}
+	create_beams();
 	
-
+	for(i = 0; i < N; i++){
+		cnx_CPU[i].mass = ALLMASS;
+	}	//Assigns masses to nodes.
 	
 	for(i = 0; i < N; i++){
 		cnx_CPU[i].radius = 0.01*pow(cnx_CPU[i].mass, 1.0/3);
 	}	//Assigns radius to spheres based on cnx_CPU.mass.
 	
 	
-	/*cnx_CPU.px[0] = 0;
-	cnx_CPU.py[0] = 0;
-	cnx_CPU.pz[0] = 0;// */
-	
-	/*for(i = 0; i < N; i++){
-		cnx_CPU[i].vx = cnx_CPU[i].py*3;
-		cnx_CPU[i].vy = -cnx_CPU[i].pz*3;
-		cnx_CPU[i].vz = cnx_CPU[i].py-cnx_CPU[i].px;
-	}// */	//Initialize sphere velocities to something nonzero
-	
+	cudaMemcpy(cnx_GPU,    cnx_CPU,                   N*sizeof(Connection), cudaMemcpyHostToDevice);
+	cudaMemcpy(numcon_GPU, numcon_CPU, 	 	  N*sizeof(int),        cudaMemcpyHostToDevice);
+	cudaMemcpy(beami_GPU,  beami_CPU,  MAXCONNECTIONS*N*sizeof(int),        cudaMemcpyHostToDevice);
+	cudaMemcpy(beamk_GPU,  beamk_CPU,  MAXCONNECTIONS*N*sizeof(double),     cudaMemcpyHostToDevice);
+	cudaMemcpy(beaml_GPU,  beaml_CPU,  MAXCONNECTIONS*N*sizeof(double),     cudaMemcpyHostToDevice);
 
-	
-	/*cnx_CPU[0].vx = 0;
-	cnx_CPU[0].vy = 0;
-	cnx_CPU[0].vz = 0;
-	*/
-	
-	//Note: Forces are not initialized as they are set to zero at each timestep.
 
-	cudaMemcpy(conn_index_GPU, conn_index_CPU, (N+1)*sizeof(int), cudaMemcpyHostToDevice);
-	cudaMemcpy(cnx_GPU, cnx_CPU, N*sizeof(Connection), cudaMemcpyHostToDevice);
-	
-	if(N < 20){
-		
-		cudaMemcpy(  i_conns_GPU,   i_conns_CPU, N*N*sizeof(int),    cudaMemcpyHostToDevice);
-		cudaMemcpy( i_kconst_GPU,  i_kconst_CPU, N*N*sizeof(double), cudaMemcpyHostToDevice);
-		cudaMemcpy(i_lengths_GPU, i_lengths_CPU, N*N*sizeof(double), cudaMemcpyHostToDevice);
-
+	for (i = 0; i < N; i++){
+		printf("numcon[%d]: %d\n", i, numcon_CPU[i]);
 	}
-	else{
-
-		cudaMemcpy(  i_conns_GPU,   i_conns_CPU, 20*N*sizeof(int),    cudaMemcpyHostToDevice);
-		cudaMemcpy( i_kconst_GPU,  i_kconst_CPU, 20*N*sizeof(double), cudaMemcpyHostToDevice);
-		cudaMemcpy(i_lengths_GPU, i_lengths_CPU, 20*N*sizeof(double), cudaMemcpyHostToDevice);
-	}
-	
-	//cudaDeviceSynchronize();
-
+/*	for (i = 0; i < N; i++){
+		for (j = 0; j < numcon_CPU[i] ; j++){
+			if(beami_CPU[i*MAXCONNECTIONS + j] > i){
+				printf("node1: %d  node2: %d  k:   %.3f  len: %.3f\n", 
+					i, beami_CPU[i*MAXCONNECTIONS + j], beamk_CPU[i*MAXCONNECTIONS+j], beaml_CPU[i*MAXCONNECTIONS+j] );
+			}
+		}
+	}*/
 }
 
 void displayText( float x, float y, float z, int r, int g, int b, const char *string ) {
@@ -260,6 +253,17 @@ void displayText( float x, float y, float z, int r, int g, int b, const char *st
 	for( int i = 0; i < j; i++ ) {
 		glutBitmapCharacter( GLUT_BITMAP_TIMES_ROMAN_24, string[i] );
 	}
+}
+
+double fastest_cnxn(Connection *cnx){
+	int i;
+	double max_fastness = 0;
+	for(i = 0; i < N; i++){
+		max_fastness = max(max_fastness, sqrt(cnx[i].vx*cnx[i].vx+
+						      cnx[i].vy*cnx[i].vy+
+						      cnx[i].vz*cnx[i].vz));
+	}
+	return(max_fastness);
 }
 
 void draw_picture()
@@ -278,13 +282,24 @@ void draw_picture()
 		glVertex3f(2.0f, -1.0f, 2.0f);
 	glEnd(); // draw "ground"
 	
+	
+	glColor3f(0.4f, 1.0f, 1.0f);     // terkwaass
+
 	int i, j;
 	for(i = 0 ; i < N ; i++){
-		for(j = conn_index_CPU[i]; j < conn_index_CPU[i+1] ; j++){
-			glBegin(GL_LINES);
-				glVertex3f(cnx_CPU[i].px, cnx_CPU[i].py, cnx_CPU[i].pz);
-				glVertex3f(cnx_CPU[i_conns_CPU[j]].px, cnx_CPU[i_conns_CPU[j]].py, cnx_CPU[i_conns_CPU[j]].pz);
-			glEnd();
+		for(j = 0; j < numcon_CPU[i] ; j++){
+			if(beami_CPU[i*MAXCONNECTIONS + j] > i){
+				glBegin(GL_LINES);
+					glVertex3f(cnx_CPU[i].px, 
+						   cnx_CPU[i].py,
+						   cnx_CPU[i].pz);
+						 //Position of i.
+					glVertex3f(cnx_CPU[beami_CPU[i*MAXCONNECTIONS + j]].px, 
+						   cnx_CPU[beami_CPU[i*MAXCONNECTIONS + j]].py, 
+						   cnx_CPU[beami_CPU[i*MAXCONNECTIONS + j]].pz);
+						 //Position of node i is connected to.
+				glEnd();
+			}
 		}
 	}	// draw connections between nodes
 	
@@ -296,12 +311,14 @@ void draw_picture()
 		glPopMatrix();
 	}	// draw intersections
 	
-	char timestring[10] ;
-		
-	snprintf(timestring, 10, "%4.4f", timerunning);
+	snprintf(timestring, 16, "time: %4.4f", STOP_TIME*attempt + timerunning);
 	
+	if(((int)(timerunning/DT))%10 == 0){
+		snprintf(fastnessstring, 18, "max speed: %3.3f", fastest_cnxn(cnx_CPU));
+	}
 	glClear(GL_DEPTH_BUFFER_BIT);
-	displayText( 1, -1.9, 0, 1.0, 1.0, 1.0, timestring);
+	displayText( 1, -1.8, 0, 1.0, 1.0, 1.0, timestring);
+	displayText( 0.59, -1.9, 0, 1.0, 1.0, 1.0, fastnessstring);
 }
 
 double dot_prod(double x1, double y1, double z1, double x2, double y2, double z2){
@@ -314,16 +331,15 @@ __device__ double dev_dot_prod(double x1, double y1, double z1, double x2, doubl
 
 __device__ double atomicAdd(double* address, double val)
 {
-    unsigned long long int* address_as_ull =
-                             (unsigned long long int*)address;
-    unsigned long long int old = *address_as_ull, assumed;
-    do {
-        assumed = old;
-old = atomicCAS(address_as_ull, assumed,
-                        __double_as_longlong(val +
-                               __longlong_as_double(assumed)));
-    } while (assumed != old);
-    return __longlong_as_double(old);
+	unsigned long long int* address_as_ull = (unsigned long long int*)address;
+	unsigned long long int old = *address_as_ull, assumed;
+	do {
+        	assumed = old;
+		old = atomicCAS(address_as_ull, assumed,
+		__double_as_longlong(val + __longlong_as_double(assumed)));
+	} while (assumed != old);
+	
+	return __longlong_as_double(old);
 } // source: http://stackoverflow.com/questions/12626096/why-has-atomicadd-not-been-implemented-for-doubles
 
 __global__ void setForces(Connection *cnx){
@@ -331,18 +347,13 @@ __global__ void setForces(Connection *cnx){
 	int i = threadIdx.x + blockDim.x*blockIdx.x;
 
 	if(i < N){
-	       	int i = threadIdx.x + blockDim.x*blockIdx.x;
 		cnx[i].fx = 0.0;
 		cnx[i].fy = -GRAVITY;	//Throw gravity into the mix
 		cnx[i].fz = 0.0;
 	}
 }
 
-__global__ void calcForces(Connection *cnx, int *conns,  double *kconst,
-			 //(cnx_GPU,         i_conns_GPU, i_kconst_GPU, 
-
-			    double *lengths, int *index,     double dampening) {
-			 // i_lengths_GPU,   conn_index_GPU, dampening)
+__global__ void calcForces(Connection *cnx, int *numcon, int *beami, double *beamk, double *beaml, double dampening){
 
 	int i = threadIdx.x + blockDim.x*blockIdx.x;
 
@@ -351,12 +362,12 @@ __global__ void calcForces(Connection *cnx, int *conns,  double *kconst,
 		double dvx, dvy, dvz, dpx, dpy, dpz, dD; 
 		int    j, node2;
 		double r, relative_v;	
-		
-		for(j = index[i]; j < index[i+1]; j++){
+
+
+		for(j = 0; j < numcon[i]; j++){
 		//iterate through all nodes connected to this position.
         
-			node2 = conns[j];
-        
+			node2 = beami[i*MAXCONNECTIONS + j];
 			dpx = cnx[node2].px - cnx[i].px;
 			dpy = cnx[node2].py - cnx[i].py;
 			dpz = cnx[node2].pz - cnx[i].pz;
@@ -375,29 +386,19 @@ __global__ void calcForces(Connection *cnx, int *conns,  double *kconst,
 			// projected onto the relative position.
 			//I.e., relative velocity along the spring.
         
-			dD= r - lengths[j];
+			dD= r - beaml[i*MAXCONNECTIONS + j];
 			//difference between relative position and default length of spring
-		
-			atomicAdd(&(cnx[i].fx), (dD*kconst[j] + dampening*relative_v)*dpx/r);
-			atomicAdd(&(cnx[i].fy), (dD*kconst[j] + dampening*relative_v)*dpy/r);
-			atomicAdd(&(cnx[i].fz), (dD*kconst[j] + dampening*relative_v)*dpz/r);
-			
-		/*	cnx[i].fx = cnx[i].fx + (dD*kconst[j] + dampening*relative_v)*dpx/r;
-			cnx[i].fy = cnx[i].fy + (dD*kconst[j] + dampening*relative_v)*dpy/r;
-			cnx[i].fz = cnx[i].fz + (dD*kconst[j] + dampening*relative_v)*dpz/r;*/
-			//adds the appropriate forces from this particle interaction to i atomically
-		                           
-                       	atomicAdd(&(cnx[node2].fx), -(dD*kconst[j] + dampening*relative_v)*dpx/r);
-			atomicAdd(&(cnx[node2].fy), -(dD*kconst[j] + dampening*relative_v)*dpy/r);
-			atomicAdd(&(cnx[node2].fz), -(dD*kconst[j] + dampening*relative_v)*dpz/r);
 
-		/*	cnx[node2].fx = cnx[node2].fx - (dD*kconst[j] + dampening*relative_v)*dpx/r;
-			cnx[node2].fy = cnx[node2].fy - (dD*kconst[j] + dampening*relative_v)*dpy/r;
-			cnx[node2].fz = cnx[node2].fz - (dD*kconst[j] + dampening*relative_v)*dpz/r; // */ 
-			//adds the appropriate forces from this particle interaction to j atomically
+			cnx[i].fx += (dD*beamk[i*MAXCONNECTIONS + j] + dampening*relative_v)*dpx/r;
+			cnx[i].fy += (dD*beamk[i*MAXCONNECTIONS + j] + dampening*relative_v)*dpy/r;
+			cnx[i].fz += (dD*beamk[i*MAXCONNECTIONS + j] + dampening*relative_v)*dpz/r;
+		
+			/*printf("node1.px: %.3f\nnode2.px: %.3f\ndD:       %.3f\nbeamk:    %.3f\ndampen:   %.3f\n", 
+				cnx[i].px,      cnx[node2].px,  dD,             beamk[MAXCONNECTIONS*i + j],
+											                  dampening*relative_v);*/	
 		}			
 	}
-}
+}// */
 
 __global__ void calcVP(Connection *cnx) {
 
@@ -420,128 +421,99 @@ __global__ void calcVP(Connection *cnx) {
 	}
 } // */
 
-void n_body_force()
-{
-	double dvx, dvy, dvz, dpx, dpy, dpz, dD; 
-	int    i,j, node2;
-	double r, relative_v;
-	//int debug_int = 0;	
-
-	for(i=0; i<N; i++)
-	{
-		cnx_CPU[i].fx = 0.0;
-		cnx_CPU[i].fy = -GRAVITY;
-		cnx_CPU[i].fz = 0.0;
-	}
-
-	//Get forces
-	for(i = 0 ; i < N ; i++){
-		for(j = conn_index_CPU[i]; j < conn_index_CPU[i+1] ; j++){
-		//iterate through all nodes connected to node i
-
-			node2 = i_conns_CPU[j];
-			
-			dpx = cnx_CPU[node2].px - cnx_CPU[i].px;
-			dpy = cnx_CPU[node2].py - cnx_CPU[i].py;
-			dpz = cnx_CPU[node2].pz - cnx_CPU[i].pz;
-			//determine relative position
-
-			dvx = cnx_CPU[node2].vx - cnx_CPU[i].vx;
-			dvy = cnx_CPU[node2].vy - cnx_CPU[i].vy;
-			dvz = cnx_CPU[node2].vz - cnx_CPU[i].vz;
-			//determine relative velocity
-
-			r = sqrt(dpx*dpx+dpy*dpy+dpz*dpz);
-			//magnitude of relative position
-
-			relative_v = dot_prod(dpx,dpy,dpz,dvx,dvy,dvz)/r;
-			//magnitude of relative velocity,
-			// projected onto the relative position.
-			//I.e., relative velocity along the spring.
-
-			dD= r - i_lengths_CPU[j];
-			//difference between relative position and default length of spring
-			
-			cnx_CPU[i].fx = cnx_CPU[i].fx + (dD*i_kconst_CPU[j] + dampening*relative_v)*dpx/r;
-			cnx_CPU[i].fy = cnx_CPU[i].fy + (dD*i_kconst_CPU[j] + dampening*relative_v)*dpy/r;
-			cnx_CPU[i].fz = cnx_CPU[i].fz + (dD*i_kconst_CPU[j] + dampening*relative_v)*dpz/r;
-			//adds the appropriate forces from this particle interaction to i
-		                                                                 
-			cnx_CPU[node2].fx = cnx_CPU[node2].fx - (dD*i_kconst_CPU[j] + dampening*relative_v)*dpx/r;
-			cnx_CPU[node2].fy = cnx_CPU[node2].fy - (dD*i_kconst_CPU[j] + dampening*relative_v)*dpy/r;
-			cnx_CPU[node2].fz = cnx_CPU[node2].fz - (dD*i_kconst_CPU[j] + dampening*relative_v)*dpz/r;
-			//adds the appropriate forces from this particle interaction to i
-		}
-	}
-	
-}// */
-
-void n_body_VP(){
-	
-	double dt = DT;
-	int i;
-
-	//Update velocity
-	for(i = 0; i < N; i++){
-		if(!cnx_CPU[i].anchor){
-			cnx_CPU[i].vx = cnx_CPU[i].vx + cnx_CPU[i].fx*dt;
-			cnx_CPU[i].vy = cnx_CPU[i].vy + cnx_CPU[i].fy*dt;
-			cnx_CPU[i].vz = cnx_CPU[i].vz + cnx_CPU[i].fz*dt;
-		}
-	}// 
-	
-	//Move elements
-	for(i=0; i<N; i++)
-	{
-		if(!cnx_CPU[i].anchor){
-			cnx_CPU[i].px = cnx_CPU[i].px + cnx_CPU[i].vx*dt;
-			cnx_CPU[i].py = cnx_CPU[i].py + cnx_CPU[i].vy*dt;
-			cnx_CPU[i].pz = cnx_CPU[i].pz + cnx_CPU[i].vz*dt;
-		}
-	}
-}
-/*
-double fastest_cnxn(Connection cnx){
-	int i;
-	double max_fast
-	for(i = 0; i < N; i++){
-		
-	}
-	return 
-}*/
-
 void update(int value){
 
 
 	if(timerunning < STOP_TIME){
-		//n_body_force();
-		//n_body_VP();
-		//cudaMemcpy(cnx_GPU, cnx_CPU, N*sizeof(Connection), cudaMemcpyHostToDevice);
-		//cudaDeviceSynchronize();
-	
+
 		setForces<<<numblocks, blocksize>>>(cnx_GPU);
-		calcForces<<<numblocks, blocksize>>>(cnx_GPU, i_conns_GPU, i_kconst_GPU, i_lengths_GPU, 	conn_index_GPU, dampening);
+		calcForces<<<numblocks, blocksize>>>(cnx_GPU, numcon_GPU, beami_GPU, beamk_GPU, beaml_GPU, dampening);
+			//ARGS: (Connection *cnx, int *numcon, int *beami, double *beamk, double *beaml, double dampening)
+
 		calcVP<<<numblocks, blocksize>>>(cnx_GPU);
 		
-		//cudaDeviceSynchronize();
 		cudaMemcpy(cnx_CPU, cnx_GPU, N*sizeof(Connection), cudaMemcpyDeviceToHost);
-		//cudaDeviceSynchronize();
 	
 		glutPostRedisplay();
-		glutTimerFunc(16, update, 0);
+		glutTimerFunc(1, update, 0);
 		//printf("cnx[9] velocity: %.3f\n", cnx_CPU[9].vy);
 		timerunning += DT;
 	}
-/*	else{
+	else{		
+		if (fastest_cnxn(cnx_CPU) < MAXVEL){
+			if(!written){
+
+				int result = -1;
+				int i = 0;
+				int j;
+				char* filetry;
+				
+				while (result == -1){
+					i += 1;
+					asprintf(&filetry, "stablestructs1/trial%d", i);
+					result = mkdir(filetry, ACCESSPERMS);
+ 				}
 		
-	
-		int i;
-		for(i = 0; i < N; i++){
- 		    fprintf(fptr, "%s,%d,%d,%d,%d,%d\n", name, mark1, mark2, mark3, mark4, mark5);
- 		}
- 		print("Written.\n");
- 		written = true
-	}*/
+				char* nodepos; 
+				char* nodecon;
+				char* datarow;
+				//char datarow[30];
+
+				asprintf(&nodepos, "%s/nodepos.txt", filetry);
+				asprintf(&nodecon, "%s/nodecon.txt", filetry);
+
+				FILE *filecon;
+
+				filecon = fopen(nodepos, "w+");
+					fprintf(filecon, "px\tpy\tpz\n");
+					for (i = 0; i < N ; i++){
+						fprintf(filecon, "%2.3f\t%2.3f\t%2.3f\n", cnx_CPU[i].px, cnx_CPU[i].py, cnx_CPU[i].pz );
+					}
+				fclose(filecon);
+
+				filecon = fopen(nodecon, "w+");
+					fprintf(filecon, "Nodes: %d\nMax Connections: %d\n\n", N, MAXCONNECTIONS);
+					fprintf(filecon, "beami\n");
+					for (i = 0; i < N ; i++){
+						asprintf(&datarow, "");
+						for (j = 0; j < numcon_CPU[i]; j++){
+							asprintf(&datarow, "%s\t%d", datarow, beami_CPU[MAXCONNECTIONS*i + j]);
+						}
+						asprintf(&datarow, "%s\n", datarow);
+						fprintf(filecon, "%s", datarow);
+					}
+
+					fprintf(filecon, "\nbeamk\n");
+					for (i = 0; i < N ; i++){
+						asprintf(&datarow, "");
+						for (j = 0; j < numcon_CPU[i]; j++){
+							asprintf(&datarow, "%s\t%.3f", datarow, beamk_CPU[MAXCONNECTIONS*i + j]);
+						}
+						asprintf(&datarow, "%s\n", datarow);
+						fprintf(filecon, "%s", datarow);
+					}
+
+					fprintf(filecon, "\nbeaml\n");
+					for (i = 0; i < N ; i++){
+						asprintf(&datarow, "");
+						for (j = 0; j < numcon_CPU[i]; j++){
+							asprintf(&datarow, "%s\t%.3f", datarow, beaml_CPU[MAXCONNECTIONS*i + j]);
+						}
+						asprintf(&datarow, "%s\n", datarow);
+						fprintf(filecon, "%s", datarow);
+					}
+				fclose(filecon);
+
+
+ 				written = true;
+			}
+		} else if (attempt < MAXTRIES){
+			attempt += 1;
+			timerunning = 0;
+
+			glutTimerFunc(1, update, 0);
+		}
+	}
 }
 
 void Display(void)
@@ -601,7 +573,7 @@ int main(int argc, char *argv[])
 	set_initial_conditions();
 	gluLookAt(0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
 	glutDisplayFunc(Display);
-	glutTimerFunc(16, update, 0);
+	glutTimerFunc(1, update, 0);
 	glutReshapeFunc(reshape);
 
 	glutMainLoop();
