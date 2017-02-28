@@ -1,0 +1,6 @@
+Nodes: 30
+Max Connections: 20
+
+beami
+beamk
+beaml
