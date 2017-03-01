@@ -42,9 +42,9 @@ using namespace std;
 //std::uniform_real_distribution<float> unif_dist(0.0,1.0);// */
 
 // Globals
-double G_const, H_const, p_const, q_const, k_const, k_anchor, rod_proportion, dampening, timerunning;
+double G_const, H_const, p_const, q_const, k_const, k_anchor, rod_proportion, timerunning, dampening_CPU;
 
-int numblocks, blocksize, attempt, numNodes, maxConns;
+int numblocks, blocksize, attempt, numNodes_CPU, maxConns_CPU;
 
 struct stat st = {0};
 
@@ -75,6 +75,9 @@ char timestring[16] ;
 char fastnessstring[18] ;	
 
 bool written = false;
+
+__device__ int	  numNodes_GPU, maxConns_GPU;
+__device__ double dampening_GPU;
 
 /*
 EXAMPLE:
@@ -216,18 +219,18 @@ void file_start(char *filename){
 	filecon = fopen(filename, "r");
 
 		fgets(buf, 1000, filecon);
-		numNodes = (int) strtol(&buf[6], (char **)NULL, 10);
+		numNodes_CPU = (int) strtol(&buf[6], (char **)NULL, 10);
 			//Nodes: [numNodes]
 
 		fgets(buf, 1000, filecon);
-		maxConns = (int) strtol(&buf[16], (char **)NULL, 10);
+		maxConns_CPU = (int) strtol(&buf[16], (char **)NULL, 10);
 			//Max Connections: [maxConns]
 
 		fgets(buf, 1000, filecon);
 		fgets(buf, 1000, filecon);
 			//Skip two lines
 		
-		for (i = 0; i < numNodes; i++){
+		for (i = 0; i < numNodes_CPU; i++){
 			fgets(buf, 1000, filecon);
 			pch = strtok(buf, "\t");
 			while(pch != NULL){
@@ -264,6 +267,14 @@ double springmass(double k, double l){
 	}
 }*/
 
+__global__ void deviceInit(int numNodes_CPU, int maxConns_CPU, double dampening_CPU){
+
+	numNodes_GPU  = numNodes_CPU;
+	maxConns_GPU  = maxConns_CPU;
+	dampening_GPU = dampening_CPU;
+
+}
+
 void set_initial_conditions()
 {
 
@@ -278,7 +289,7 @@ void set_initial_conditions()
 	k_const = 1;
 	k_anchor = 4000;
 	rod_proportion = 10;
-	dampening = 20;
+	dampening_CPU = 20;
 
 	create_beams();
 	
@@ -314,8 +325,11 @@ void set_initial_conditions()
 			}
 		}
 	}*/
-	printf("%d\n", numNodes);
-	printf("%d\n", maxConns);
+	//printf("%d\n", numNodes_CPU);
+	//printf("%d\n", maxConns_CPU);
+
+	//cudaMemcpy(&numNodes_GPU, &numNodes_CPU, sizeof(int), cudaMemcpyHostToDevice);
+//	deviceInit<<<1, 1>>>(numNodes_CPU, maxConns_CPU, dampening_CPU);
 }
 
 void displayText( float x, float y, float z, int r, int g, int b, const char *string ) {
@@ -423,6 +437,7 @@ __global__ void calcForces(Connection *cnx, int *numcon, int *beami, double *bea
 
 	int i = threadIdx.x + blockDim.x*blockIdx.x;
 
+	//if(i < numNodes_GPU){
 	if(i < N){
 	
 		double dvx, dvy, dvz, dpx, dpy, dpz, dD; 
@@ -492,7 +507,7 @@ void update(int value){
 	if(timerunning < STOP_TIME){
 
 		setForces<<<numblocks, blocksize>>>(cnx_GPU);
-		calcForces<<<numblocks, blocksize>>>(cnx_GPU, numcon_GPU, beami_GPU, beamk_GPU, beaml_GPU, fail_GPU, dampening);
+		calcForces<<<numblocks, blocksize>>>(cnx_GPU, numcon_GPU, beami_GPU, beamk_GPU, beaml_GPU, fail_GPU, dampening_CPU);
 			//ARGS: (Connection *cnx, int *numcon, int *beami, double *beamk, double *beaml, double dampening)
 
 		calcVP<<<numblocks, blocksize>>>(cnx_GPU);
@@ -513,13 +528,15 @@ void update(int value){
 				int i = 0;
 				int j;
 				char* filetry;
-				
+				printf("preloop1\n");
 				while (result == -1){
 					i += 1;
 					asprintf(&filetry, "stablestructs1/trial%d", i);
 					result = mkdir(filetry, ACCESSPERMS);
+					printf("trying %d\n", i);
+					printf("result %d\n", result);
  				}
-		
+				printf("passloop1\n");
 				char* nodepos; 
 				char* nodecon;
 				char* datarow;
@@ -531,7 +548,7 @@ void update(int value){
 				FILE *filecon;
 
 				filecon = fopen(nodepos, "w+");
-					fprintf(filecon, "px\tpy\tpz\n");
+					fprintf(filecon, "px\tpy\tpz\tanchor\n");
 					for (i = 0; i < N ; i++){
 						fprintf(filecon, "%2.3f\t%2.3f\t%2.3f\t%s\n", 
 								 cnx_CPU[i].px, cnx_CPU[i].py, cnx_CPU[i].pz, cnx_CPU[i].anchor ? "T" : "F" );
@@ -581,7 +598,7 @@ void update(int value){
 					}
 
 				fclose(filecon);
-
+				printf("written.\n");
  				written = true;
 			}
 		} else if (attempt < MAXTRIES){
