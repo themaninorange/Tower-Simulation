@@ -269,19 +269,8 @@ void file_start(char *foldername){
 			while(pch != NULL){
 				
 				j = strtol(pch, (char **)NULL, 10);
-					//Reads the current token
-				
-//				if(j > i){
-					beami_CPU[i*maxConns_CPU + numcon_CPU[i]] = j;
-						//Connects i to j				
-//					beami_CPU[j*maxConns_CPU + numcon_CPU[j]] = i;
-						//Connects j to i
-
-//					numcon_CPU[j] += 1;	
-						//Increase number of connections to j by one.	
-					numcon_CPU[i] += 1;	
-						//Increase number of connections to i by one.
-//				}
+				beami_CPU[i*maxConns_CPU + numcon_CPU[i]] = j;
+				numcon_CPU[i] += 1;	
 				pch = strtok(NULL, "\t");
 					//Reads the next token
 			//	printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
@@ -303,32 +292,10 @@ void file_start(char *foldername){
 			fgets(buf, 1000, filecon);
 			pch = strtok(buf, "\t");
 			while(pch != NULL){
-			
-/*				if(i == 28){
-					printf("%s\n", pch);
-					printf("number of connections to 28: %d\n", numcon_CPU[28]);
-				}	*/
 				k_const = strtof(pch, (char **)NULL);
-					//Reads the current token
-
-			//	printf("gets to k_const: %d\n", j);
-//				if(j > i){
-					beamk_CPU[i*maxConns_CPU + numcon_CPU[i]] = k_const;
-//					beamk_CPU[j*maxConns_CPU + numcon_CPU[j]] = k_const;
-						//Sets k constant for i to j and j to i.
-				
-//					numcon_CPU[j] += 1;	
-						//Increase number of connections to j by one.	
-					numcon_CPU[i] += 1;	
-						//Increase number of connections to i by one.*/
-					
-//				}
-					//printf("%s,   ", pch);
+				beamk_CPU[i*maxConns_CPU + numcon_CPU[i]] = k_const;
+				numcon_CPU[i] += 1;	
 				pch = strtok(NULL, "\t");
-						//Reads the next token*/
-			
-				// printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
-			
 			}
 			printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
 
@@ -352,20 +319,8 @@ void file_start(char *foldername){
 			while(pch != NULL){
 				
 				length = strtof(pch, (char **)NULL);
-					//Reads the current token
-
-//				if(j > i){
-					beaml_CPU[i*maxConns_CPU + numcon_CPU[i]] = length;
-//					beaml_CPU[j*maxConns_CPU + numcon_CPU[j]] = length;
-						//Sets k constant for i to j and j to i.
-				
-//					numcon_CPU[j] += 1;	
-						//Increase number of connections to j by one.	
-					numcon_CPU[i] += 1;	
-						//Increase number of connections to i by one.
-				
-//				}
-				//printf("%s,   ", pch);
+				beaml_CPU[i*maxConns_CPU + numcon_CPU[i]] = length;
+				numcon_CPU[i] += 1;	
 				pch = strtok(NULL, "\t");
 					//Reads the next token
 				//printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
@@ -393,6 +348,7 @@ void file_start(char *foldername){
 
 			pch = strtok(NULL, "\t");
 			cnx_CPU[i].anchor = (pch[0]==0["T"]); //pointer sorcery
+			cnx_CPU[i].anchor = (pch[0]=="T"[0]); //pointer sorcery
 			
 		}
 
