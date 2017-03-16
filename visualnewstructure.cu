@@ -78,11 +78,10 @@ char timestring[16] ;
 char fastnessstring[18] ;	
 
 //char readfolder[1000] = "stablestructs1/trial2";
-char *popfolder;
 char readfolder[1000] = "";
 
-bool written   = false;
-bool isRunning = true;
+bool written = false;
+
 
 /*
 EXAMPLE:
@@ -219,7 +218,6 @@ void random_start(){
 	}*/
 }// */
 
-/*
 void reset_numcon(){
 	int i;
 
@@ -229,7 +227,6 @@ void reset_numcon(){
 		printf("numcon[%3d]: %3d\n", i , numcon_CPU[i]);
 	}
 }
-
 
 void file_start(char *foldername){
 
@@ -360,19 +357,19 @@ void file_start(char *foldername){
 
 
 }
-*/
+
 
 void create_beams(){
 	
 
 	if(readfolder[0] == 0[""]){ //pointer sorcery
 		random_start();
-	} /*else { 
+	} else { 
 		file_start(readfolder);
 	}
 
 
-	int i, j;*/
+	int i, j;
 	/*for(i = 0; i < numNodes_CPU; i++){
 		for(j = 0; j < numcon_CPU[i]; j++){
 			printf("nodes connected: %d, %d\n", i, beami_CPU[i*maxConns_CPU + j]);	
@@ -468,7 +465,6 @@ void set_initial_conditions()
 	deviceInit<<<1, 1>>>(numNodes_CPU, maxConns_CPU, dampening_CPU);
 }
 
-/*
 void displayText( float x, float y, float z, int r, int g, int b, const char *string ) {
 	int j = strlen( string );
  
@@ -478,7 +474,6 @@ void displayText( float x, float y, float z, int r, int g, int b, const char *st
 		glutBitmapCharacter( GLUT_BITMAP_TIMES_ROMAN_24, string[i] );
 	}
 }
-*/
 
 double fastest_cnxn(Connection *cnx){
 	int i;
@@ -491,7 +486,6 @@ double fastest_cnxn(Connection *cnx){
 	return(max_fastness);
 }
 
-/*
 void draw_picture()
 {
 	glClear(GL_COLOR_BUFFER_BIT);
@@ -551,7 +545,6 @@ void draw_picture()
 	displayText( 1, -1.8, 0, 1.0, 1.0, 1.0, timestring);
 	displayText( 0.59, -1.9, 0, 1.0, 1.0, 1.0, fastnessstring);
 }
-*/
 
 double dot_prod(double x1, double y1, double z1, double x2, double y2, double z2){
 	return(x1*x2+y1*y2+z1*z2);
@@ -641,16 +634,6 @@ __global__ void calcVP(Connection *cnx) {
 	}
 } // */
 
-double goodness(){
-	
-	int i;
-	double maxheight = 0;
-	for (i = 0; i < numNodes_CPU; i++){
-		maxheight = max(cnx_CPU[i].py, maxheight);
-	} 
-	return(maxheight);
-}
-
 void update(int value){
 
 
@@ -662,45 +645,39 @@ void update(int value){
 
 		calcVP<<<numblocks, blocksize>>>(cnx_GPU);
 		
-		//cudaMemcpy( cnx_CPU,  cnx_GPU, numNodes_CPU*sizeof(Connection),        cudaMemcpyDeviceToHost);
-		//cudaMemcpy(fail_CPU, fail_GPU, maxConns_CPU*numNodes_CPU*sizeof(bool), cudaMemcpyDeviceToHost);
+		cudaMemcpy( cnx_CPU,  cnx_GPU, numNodes_CPU*sizeof(Connection),                cudaMemcpyDeviceToHost);
+		cudaMemcpy(fail_CPU, fail_GPU, maxConns_CPU*numNodes_CPU*sizeof(bool),       cudaMemcpyDeviceToHost);
 	
-		//glutPostRedisplay();
-		//glutTimerFunc(1, update, 0);
+		glutPostRedisplay();
+		glutTimerFunc(1, update, 0);
 		//printf("cnx[9] velocity: %.3f\n", cnx_CPU[9].vy);
 		timerunning += DT;
 	}
-	else{	
-		cudaMemcpy( cnx_CPU,  cnx_GPU, numNodes_CPU*sizeof(Connection),        cudaMemcpyDeviceToHost);	
-		cudaMemcpy(fail_CPU, fail_GPU, maxConns_CPU*numNodes_CPU*sizeof(bool), cudaMemcpyDeviceToHost);  
-		
+	else{		
 		if (fastest_cnxn(cnx_CPU) < MAXVEL){
 			if(!written){
 
 				int result = -1;
-				int trial = 0;
-				int i, j;
+				int i = 0;
+				int j;
 				char* filetry;
 				printf("preloop1\n");
 				while (result == -1){
-					trial += 1;
-					asprintf(&filetry, "%s/trial%d", popfolder, trial);
+					i += 1;
+					asprintf(&filetry, "stablestructs1/trial%d", i);
 					result = mkdir(filetry, ACCESSPERMS);
-					//printf("trying %d\n", trial);
-					//printf("result %d\n", result);
+					printf("trying %d\n", i);
+					printf("result %d\n", result);
  				}
-				printf("Writing trial%d...\n", trial);
-				//printf("passloop1\n");
+				printf("passloop1\n");
 				char* nodepos; 
 				char* nodecon;
-				char* popsumm;
 				char* datarow;
 				//char datarow[30];
 
 				asprintf(&nodepos, "%s/nodepos.txt", filetry);
 				asprintf(&nodecon, "%s/nodecon.txt", filetry);
-				asprintf(&popsumm, "%s/summary.txt", popfolder);
-				
+
 				FILE *filecon;
 
 				filecon = fopen(nodepos, "w+");
@@ -754,28 +731,18 @@ void update(int value){
 					}
 
 				fclose(filecon);
-				
-				filecon = fopen(popsumm, "a");
-					fprintf(filecon, "trial%d\t%.3f\n", trial, goodness());
-				fclose(filecon);
-
 				printf("written.\n");
  				written = true;
-				isRunning = false;
 			}
 		} else if (attempt < MAXTRIES){
 			attempt += 1;
 			timerunning = 0;
 
-			//glutTimerFunc(1, update, 0);
-		} else {
-			isRunning = false;
+			glutTimerFunc(1, update, 0);
 		}
 	}
 }
 
-
-/*
 void Display(void)
 {
 	//gluLookAt(0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
@@ -783,7 +750,7 @@ void Display(void)
 	
 	draw_picture();
 	glutSwapBuffers();
-	glFlush();// 
+	glFlush();// */
 }
 
 void reshape(int w, int h)
@@ -798,27 +765,10 @@ void reshape(int w, int h)
 
 	glMatrixMode(GL_MODELVIEW);
 }
-*/
-
-void mainLoop(){
-	
-	while(isRunning){
-		update(0);
-	}
-}
 
 int main(int argc, char *argv[])
 {
-	
-	popfolder = (char *)malloc( 1000* sizeof(char)   );
-	if(argc == 2){
-		asprintf(&popfolder, "%s", argv[1]);
-		//*popfolder = *argv[1];
-	} else if(argc == 1){
-		asprintf(&popfolder, "%s", "stablestructs1");
 
-	}
-	/*
 	glutInit(&argc,argv);
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_DEPTH | GLUT_RGB);
 	glutInitWindowSize(XWindowSize,YWindowSize);
@@ -845,18 +795,15 @@ int main(int argc, char *argv[])
 	glEnable(GL_LIGHT0);
 	glEnable(GL_COLOR_MATERIAL);
 	glEnable(GL_DEPTH_TEST);
-	*/
-	set_initial_conditions();
 
-	/*
+	set_initial_conditions();
 	gluLookAt(0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
 	glutDisplayFunc(Display);
 	glutTimerFunc(1, update, 0);
 	glutReshapeFunc(reshape);
-	
+
 	glutMainLoop();
-	*/
-	mainLoop();
+
 	return 0;
 }
 
