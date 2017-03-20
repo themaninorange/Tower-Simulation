@@ -1,0 +1,4 @@
+trial	goodness
+trial19	0.826
+trial20	0.881
+trial21	0.886
