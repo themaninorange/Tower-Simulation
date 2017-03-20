@@ -136,6 +136,26 @@ void AllocateMemory(){
 
 }
 
+CleanUp(){
+
+	printf("Freeing CPU Memory.\n");
+	free(numcon_CPU);
+	free(beami_CPU );
+	free(beamk_CPU );
+	free(beaml_CPU );
+	free(fail_CPU  );
+
+	printf("Freeing GPU Memory.\n");
+	cudaFree(numcon_GPU);
+	cudaFree(beami_GPU );
+	cudaFree(beamk_GPU );
+	cudaFree(beaml_GPU );
+	cudaFree(fail_GPU  );
+	
+	printf("Memory Freed.\n");
+}
+
+
 void random_start(){
 
 	maxConns_CPU = MAXCONNECTIONS;

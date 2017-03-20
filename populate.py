@@ -149,7 +149,7 @@ def mutate(nodecon, nodepos, conmuterate = 0.01, posmuterate = 0.1, conmutesize 
     
     return nodecon, nodepos
 
-    
+def stabilizeChildren(folder): 
 
 nodecon, nodepos = breed(folder, trial1, trial2)
 writeUnstable(folder, bigframe, posframe, 20)

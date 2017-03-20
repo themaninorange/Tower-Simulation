@@ -133,6 +133,25 @@ void AllocateMemory(){
 
 }
 
+void CleanUp(){
+	
+	printf("Freeing CPU memory.\n");
+	free(cnx_CPU);
+	free(beami_CPU  ) ;
+        free(beamk_CPU  ) ;
+        free(beaml_CPU  ) ;
+        free(fail_CPU   ) ;
+	free(numcon_CPU ) ;
+
+	printf("Freeing GPU memory.\n");
+	cudaFree(cnx_GPU);
+	cudaFree(beami_GPU  ) ;
+        cudaFree(beamk_GPU  ) ;
+        cudaFree(beaml_GPU  ) ;
+        cudaFree(fail_GPU   ) ;
+
+	printf("Memory Freed.\n");
+}
 /*
 void random_start(){
 
@@ -1086,6 +1105,8 @@ void update(int value){
 			timerunning = 0;
 
 		//	glutTimerFunc(1, update, 0);
+		} else {
+			isRunning = false;
 		}
 	}
 }
@@ -1176,6 +1197,7 @@ int main(int argc, char *argv[])
 	glutMainLoop();
 	*/
 	mainLoop();
+	CleanUp();
 	return 0;
 }
 
