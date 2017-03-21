@@ -152,15 +152,8 @@ def mutate(nodecon, nodepos, conmuterate = 0.01, posmuterate = 0.1, conmutesize 
 def stabilizeChildren(folder):
     for x in os.listdir(folder+'/unstablechildren'):
         call(['./newstructure.run', folder + '/unstablechildren/' + x, folder])
-
-def culling(folder):
-    df = pd.read_csv(folder + '/summary.txt', sep = '\t', header = (0), lineterminator = '\n')
-    dead = df.loc[df.goodness < np.median(float(df.goodness))]
-    
-    	
-
-
-
+    		
+        
 
 nodecon, nodepos = breed(folder, trial1, trial2)
 writeUnstable(folder, bigframe, posframe, 20)

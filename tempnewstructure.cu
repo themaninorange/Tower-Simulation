@@ -698,11 +698,11 @@ void create_beams(){
 			break;
 		case 's' :
 			file_start(readfolder1);
-			printf("Breeding structures completed.\n");
+			printf("File reading completed.\n");
 			break;
 		default  :
 			random_start(); 
-			printf("Breeding structures completed.\n");
+			printf("Random initializstion completed.\n");
 	}
 	
 	/*
