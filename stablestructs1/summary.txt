@@ -1,4 +1,3 @@
 trial	goodness
-trial19	0.826
-trial20	0.881
-trial21	0.886
+trial20	0.8809999999999999
+trial21	0.8859999999999999

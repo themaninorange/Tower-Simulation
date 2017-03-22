@@ -1,0 +1,10 @@
+Energy transfer towers project extends to other large steel structures.
+Steelbeams compress like springs.  If the force is too great, the spring breaks.
+Junctions act under gravity.  Naively, the weight could eb proportional to the number of edges from each node.
+
+Extensions:
+	1)	Subject the structure to other forces
+	2)	Use Metropolis-Hastings algorithm to optimize for weight and stability.
+		The entire network of nodes is a node in the random walk graph for M-H.
+		Model the system with that network.  Number of trials that don't fail are a measure of "goodness".
+	3)	Model structures with variable gravity. (Extending into space)

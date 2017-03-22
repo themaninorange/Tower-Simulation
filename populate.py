@@ -1,6 +1,7 @@
 import pandas as pd
 import os
 import random
+import shutil
 from subprocess import call
 
 os.getcwd()
@@ -155,11 +156,11 @@ def stabilizeChildren(folder):
 
 def culling(folder):
     df = pd.read_csv(folder + '/summary.txt', sep = '\t', header = (0), lineterminator = '\n')
-    dead = df.loc[df.goodness < np.median(float(df.goodness))]
-    
-    	
-
-
+    dead = df.loc[df.goodness < df.goodness.astype(float).median()]
+    alive = df.loc[-df.trial.isin(dead.trial)]
+    for x in dead.trial:
+        shutil.rmtree(folder + '/' + x)
+    alive.to_csv(folder + '/summary.txt', sep='\t', header=True, index = False)
 
 
 nodecon, nodepos = breed(folder, trial1, trial2)
