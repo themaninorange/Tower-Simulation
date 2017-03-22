@@ -1162,6 +1162,10 @@ int main(int argc, char *argv[])
 	popfolder   = (char *)malloc( 1000* sizeof(char));
 	if(argc == 1){
 		flag = 'X';
+	} else if(argc == 2){
+		asprintf(&popfolder,   "%s", argv[1]);
+
+		flag = 'X';
 	} else if(argc == 3){
 		asprintf(&readfolder1, "%s", argv[1]);
 		asprintf(&popfolder,   "%s", argv[2]);
@@ -1171,6 +1175,7 @@ int main(int argc, char *argv[])
 		asprintf(&readfolder1, "%s", argv[1]);
 		asprintf(&readfolder2, "%s", argv[2]);
 		asprintf(&popfolder,   "%s", argv[3]);	
+
 		flag = 'b';
 	} else {
 		return(1);

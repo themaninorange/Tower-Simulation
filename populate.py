@@ -2,16 +2,15 @@ import pandas as pd
 import os
 import random
 import shutil
+import numpy as np
 from subprocess import call
 
 os.getcwd()
 os.chdir('/media/storage/CUDAClasses/CUDACLASS2017/JosephBrown/BigProject')
-os.chdir('/home/joseph/Dev/c_projects/CUDA/Energy Transfer Tower/')
+#os.chdir('/home/joseph/Dev/c_projects/CUDA/Energy Transfer Tower/')
 
-pop = 100
-folder = "stablestructs1"
-trial1 = 7
-trial2 = 8
+pop = 6
+folder = "runningpop1"
 
 def firstInt(array): 
     #Source:
@@ -34,9 +33,10 @@ def firstInt(array):
 def populate(folder, popsize):
     for i in range(popsize):
         call(["./newstructure.run", folder])
+        print i
 
 def readedges(folder, trial):
-    with open(folder + "/trial" + str(trial) + "/nodecon.txt") as f:
+    with open(folder + "/" + trial + "/nodecon.txt") as f:
         lines = [line for line in f]
     numnodes = int(lines[0][7:-1])
     maxconns = int(lines[1][17:-1])
@@ -92,16 +92,16 @@ def breed(folder, trial1, trial2):
     bigframe = pd.concat([subcomm1, subcomm2, subdiff])
     bigframe = bigframe.reset_index(drop = True)
     
-    with open(folder + "/trial" + str(trial1) + "/nodepos.txt") as f:
+    with open(folder + "/" + str(trial1) + "/nodepos.txt") as f:
         lines1 = [line for line in f]
-    with open(folder + "/trial" + str(trial2) + "/nodepos.txt") as f:
+    with open(folder + "/" + str(trial2) + "/nodepos.txt") as f:
         lines2 = [line for line in f]
     
     lines = [lines1[i] if random.random() < 0.5 else lines2[i] for i in range(len(lines1))]
     posframe = pd.DataFrame([[float(x) for x in line.split()[:-1]]+[line.split()[-1]] for line in lines[1:]])
     posframe.columns = ["px", "py", "pz", "anchor"]
     
-    return bigframe, posframe
+    return bigframe, posframe, maxconns1
 
 
 def writeUnstable(folder, nodecon, nodepos, maxconns):
@@ -112,39 +112,38 @@ def writeUnstable(folder, nodecon, nodepos, maxconns):
     
     filestring = "Nodes: " + str(numnodes) + \
     "\nMax Connections: " + str(maxconns) + \
-    "\n\nbeami\n" + "\n".join(["\t"+"\t".join(nodecon[nodecon['nodei'] == i]['nodej']) for i in range(numnodes)]) + \
-    "\n\nbeamk\n" + "\n".join(["\t"+"\t".join(nodecon[nodecon['nodei'] == i]['edgek']) for i in range(numnodes)]) + \
-    "\n\nbeaml\n" + "\n".join(["\t"+"\t".join(nodecon[nodecon['nodei'] == i]['edgel']) for i in range(numnodes)])
+    "\n\nbeami\n" + "\n".join(["\t"+"\t".join([str(x) for x in nodecon[nodecon['nodei'] == i]['nodej']]) for i in range(numnodes)]) + \
+    "\n\nbeamk\n" + "\n".join(["\t"+"\t".join([str(x) for x in nodecon[nodecon['nodei'] == i]['edgek']]) for i in range(numnodes)]) + \
+    "\n\nbeaml\n" + "\n".join(["\t"+"\t".join([str(x) for x in nodecon[nodecon['nodei'] == i]['edgel']]) for i in range(numnodes)])
     
     with open(folder + "/unstablechildren/" + childfile + "/nodecon.txt", "w") as f:
         f.write(filestring)
 
-    filestring = "px\tpy\tpz\tanchor\n" + "\n".join(["\t".join(nodepos.loc[i]) for i in range(numnodes)])
+    filestring = "px\tpy\tpz\tanchor\n" + "\n".join(["\t".join([str(x) for x in nodepos.loc[i]]) for i in range(numnodes)])
     with open(folder + "/unstablechildren/" + childfile + "/nodepos.txt", "w") as f:
         f.write(filestring)
 
 def mutate(nodecon, nodepos, conmuterate = 0.01, posmuterate = 0.1, conmutesize = 1.2, posmutesize = 0.2):
-    posmute = [i for i in range(nodepos.shape[0]) if random.random()<posmuterate]
-    conmute = [i for i in range(nodecon.shape[0]) if random.random()<conmuterate]
-    conkill = [i for i in range(nodecon.shape[0]) if random.random()<conmuterate and i not in conmute]
+    posmute  = [i for i in range(nodepos.shape[0]) if random.random()<posmuterate]
+    conmute  = [i for i in range(nodecon.shape[0]) if random.random()<conmuterate]
+    conkill  = [i for i in range(nodecon.shape[0]) if random.random()<conmuterate and i not in conmute]
     
     for node in posmute:
-        nodepos.loc[node]['px'] += (2*random.random() - 1)*posmutesize
-        nodepos.loc[node]['py'] += (2*random.random() - 1)*posmutesize
-        nodepos.loc[node]['pz'] += (2*random.random() - 1)*posmutesize
+        nodepos.loc[node,'px'] += (2*random.random() - 1)*posmutesize
+        nodepos.loc[node,'py'] += (2*random.random() - 1)*posmutesize
+        nodepos.loc[node,'pz'] += (2*random.random() - 1)*posmutesize
     
     for conn in conmute:
         nodei, nodej = nodecon.loc[conn][['nodei', 'nodej']]
+        print("Mutating connection between %d and %d"%(nodei, nodej))
+        print(nodecon[(nodecon.nodei == nodej) & (nodecon.nodej == nodei)])
         conj = nodecon[(nodecon.nodei == nodej) & (nodecon.nodej == nodei)].index[0]
-        nodecon.loc[conn]['edgek'] *= conmutesize**(2*random.random()-1)
-        nodecon.loc[conn]['edgel'] *= conmutesize**(2*random.random()-1)
-        nodecon.loc[conj]['edgek'] *= conmutesize**(2*random.random()-1)
-        nodecon.loc[conj]['edgel'] *= conmutesize**(2*random.random()-1)
+        nodecon.loc[conn,'edgek'] *= conmutesize**(2*random.random()-1)
+        nodecon.loc[conn,'edgel'] *= conmutesize**(2*random.random()-1)
+        nodecon.loc[conj,'edgek'] *= conmutesize**(2*random.random()-1)
+        nodecon.loc[conj,'edgel'] *= conmutesize**(2*random.random()-1)
     
-    for conn in conkill:
-        nodei, nodej = nodecon.loc[conn][['nodei', 'nodej']]
-        nodecon = nodecon[((nodecon.nodei != nodei) | (nodecon.nodej != nodej)) & \
-                          ((nodecon.nodei != nodej) | (nodecon.nodej != nodei))]
+    nodecon = nodecon[-(nodecon.nodei.isin(killnode) & nodecon.nodej.isin(killnode))]
     
     nodecon.reset_index(drop = True)
     
@@ -153,6 +152,7 @@ def mutate(nodecon, nodepos, conmuterate = 0.01, posmuterate = 0.1, conmutesize 
 def stabilizeChildren(folder):
     for x in os.listdir(folder+'/unstablechildren'):
         call(['./newstructure.run', folder + '/unstablechildren/' + x, folder])
+        shutil.rmtree(folder + '/unstablechildren/' + x)
 
 def culling(folder):
     df = pd.read_csv(folder + '/summary.txt', sep = '\t', header = (0), lineterminator = '\n')
@@ -162,8 +162,42 @@ def culling(folder):
         shutil.rmtree(folder + '/' + x)
     alive.to_csv(folder + '/summary.txt', sep='\t', header=True, index = False)
 
+#populate the folder
+populate(folder, pop)
+#print(str(pop))
+#print(folder)
+#print(os.getcwd())
 
-nodecon, nodepos = breed(folder, trial1, trial2)
-writeUnstable(folder, bigframe, posframe, 20)
+#On loop:
+for i in range(100):
+    
+    #kill half
+    culling(folder)
+    
+    #breed remaining half
+    survivors = pd.read_csv(folder + '/summary.txt', sep = '\t', header = (0))
+    goodnessp = np.array([float(x) for x in survivors.goodness])
+    goodnessp /= sum(goodnessp)
+        
+    for j in range(pop - survivors.shape[0] + 2):
+        
+        #print([x for x in survivors.trial])
+        
+        breedingpair = np.random.choice([x for x in survivors.trial], 2, p = goodnessp)
+        
+        #print(breedingpair)
+        
+        nodecon, nodepos, maxconns = breed(folder, breedingpair[0], breedingpair[1])
+        nodecon, nodepos = mutate(nodecon, nodepos)
+        writeUnstable(folder, nodecon, nodepos, maxconns)
+    
+    stabilizeChildren(folder)
 
-mutate(nodecon, nodepos)
+
+
+
+
+
+
+
+
