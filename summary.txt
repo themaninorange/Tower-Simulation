@@ -1,0 +1,11 @@
+trial	goodness
+trial8	1.75
+trial1	1.7519999999999998
+trial4	1.75
+trial5	1.75
+trial2	1.751
+trial3	1.75
+trial6	1.753
+trial9	1.75
+trial7	1.75
+trial12	1.754
