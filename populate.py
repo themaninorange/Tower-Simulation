@@ -142,7 +142,7 @@ def writeUnstable(folder, nodecon, nodepos, maxconns):
     with open(folder + "/unstablechildren/" + childfile + "/nodepos.txt", "w") as f:
         f.write(filestring)
 
-def mutate(nodecon, nodepos, conmuterate = 0.01, posmuterate = 0.1, conmutesize = 1.2, posmutesize = 0.2):
+def mutate1(nodecon, nodepos, conmuterate = 0.01, posmuterate = 0.1, conmutesize = 1.2, posmutesize = 0.2):
     posmute  = [i for i in range(nodepos.shape[0]) if random.random()<posmuterate and nodepos.anchor[i] != 'T']
     conmute  = [i for i in range(nodecon.shape[0]) if random.random()<conmuterate]
     conkill  = [i for i in range(nodecon.shape[0]) if random.random()<conmuterate and i not in conmute]
@@ -177,6 +177,46 @@ def mutate(nodecon, nodepos, conmuterate = 0.01, posmuterate = 0.1, conmutesize 
     nodecon.reset_index(drop = True)
     
     return nodecon, nodepos
+
+def mutate2(nodecon, nodepos, conmuterate = 0.01, posmuterate = 0.1, conmutesize = 1.2, posmutesize = 0.2):
+    posmute  = [i for i in range(nodepos.shape[0]) if random.random()<posmuterate and nodepos.anchor[i] != 'T']
+    #conmute  = [i for i in range(nodecon.shape[0]) if random.random()<conmuterate]
+    #conkill  = [i for i in range(nodecon.shape[0]) if random.random()<conmuterate and i not in conmute]
+    #killpair = [(nodecon.nodei[conn].item(), nodecon.nodej[conn].item()) for conn in conkill]
+    #killlist = list(set(killpair + [(x[1], x[0]) for x in killpair]))
+    
+    for node in posmute:
+    	nodepos.set_value(node, 'px', nodepos.loc[node,'px'].item() + (2*random.random() - 1)*posmutesize)
+    	nodepos.set_value(node, 'py', nodepos.loc[node,'py'].item() + (2*random.random() - 1)*posmutesize)
+    	nodepos.set_value(node, 'pz', nodepos.loc[node,'pz'].item() + (2*random.random() - 1)*posmutesize)
+    	
+    	conframe = nodecon.loc[nodecon.nodei == node]
+    
+    for conn in conmute:
+        nodei, nodej = nodecon.loc[conn][['nodei', 'nodej']]
+        print("Mutating connection between %d and %d"%(nodei, nodej))
+        print(nodecon[(nodecon.nodei == nodei) & (nodecon.nodej == nodej)])
+        print(nodecon[(nodecon.nodei == nodej) & (nodecon.nodej == nodei)])
+        if nodecon[(nodecon.nodei == nodej) & (nodecon.nodej == nodei)].shape[0] >0:
+            conj = nodecon[(nodecon.nodei == nodej) & (nodecon.nodej == nodei)].index[0]
+        else:
+            conj = nodecon.shape[0]
+            print(conj)
+            nodecon.append(pd.DataFrame([0,0,nodej, nodei]), ignore_index = True)
+            print(nodecon.shape[0])
+        nodecon.set_value(conn, 'edgek', nodecon.loc[conn,'edgek'].item() * conmutesize**(2*random.random()-1))
+        nodecon.set_value(conn, 'edgel', nodecon.loc[conn,'edgel'].item() * conmutesize**(2*random.random()-1))
+        nodecon.set_value(conj, 'edgek', nodecon.loc[conj,'edgek'].item())
+        nodecon.set_value(conj, 'edgel', nodecon.loc[conj,'edgel'].item())
+    
+    for pair in killlist:
+        nodecon = nodecon[(nodecon.nodei != pair[0]) | (nodecon.nodej != pair[1])]
+    
+    nodecon.reset_index(drop = True)
+    
+    return nodecon, nodepos
+
+
 
 def stabilizeChildren(folder):
     for x in os.listdir(folder+'/unstablechildren'):
@@ -223,7 +263,7 @@ for i in range(10):
         #print(breedingpair)
         
         #nodecon, nodepos, maxconns = breed(folder, breedingpair[0], breedingpair[1])
-        nodecon, nodepos = mutate(asexualcon, asexualpos)
+        nodecon, nodepos = mutate1(asexualcon, asexualpos)
         writeUnstable(folder, nodecon, nodepos, maxconns)
     
     stabilizeChildren(folder)
