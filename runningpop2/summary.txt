@@ -1,1 +1,2 @@
 trial	goodness
+trial1	1.824

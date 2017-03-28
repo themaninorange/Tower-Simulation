@@ -9,8 +9,8 @@ os.getcwd()
 os.chdir('/media/storage/CUDAClasses/CUDACLASS2017/JosephBrown/BigProject')
 #os.chdir('/home/joseph/Dev/c_projects/CUDA/Energy Transfer Tower/')
 
-pop = 30
-folder = "runningpop2"
+pop = 20
+folder = "runningpop3"
 
 def firstInt(array): 
     #Source:
@@ -44,6 +44,7 @@ def readedges(folder, trial):
     nodej = []
     edgek = []
     edgel = []
+    #genes = []
     
     for i in range(numnodes):
         values = lines[4 + i].split()
@@ -52,11 +53,21 @@ def readedges(folder, trial):
         edgek = edgek + [float(x) for x in lines[6 + numnodes + i].split()]
         edgel = edgel + [float(x) for x in lines[8 + 2*numnodes + i].split()]
     
+    """
+    if len(lines) >= 9 + 4*numnodes:
+        for i in range(numnodes):
+            genes = genes + [int(x) for x in lines[10 + 3*numnodes + i].split()]
+    else:
+    	genes = [0]*len()
+    """
+    
     return pd.DataFrame({
         'nodei' : nodei,
         'nodej' : nodej,
         'edgek' : edgek,
-        'edgel' : edgel }), numnodes, maxconns
+        'edgel' : edgel #,
+        #'gene'  : genes 
+        }), numnodes, maxconns
 
 def readpos(folder, trial):
     with open(folder + "/" + str(trial) + "/nodepos.txt") as f:
@@ -187,7 +198,7 @@ populate(folder, pop)
 #print(os.getcwd())
 
 #On loop:
-for i in range(500):
+for i in range(10):
     
     #kill half
     culling(folder)

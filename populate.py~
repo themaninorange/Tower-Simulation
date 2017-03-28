@@ -9,8 +9,8 @@ os.getcwd()
 os.chdir('/media/storage/CUDAClasses/CUDACLASS2017/JosephBrown/BigProject')
 #os.chdir('/home/joseph/Dev/c_projects/CUDA/Energy Transfer Tower/')
 
-pop = 6
-folder = "runningpop1"
+pop = 20
+folder = "runningpop3"
 
 def firstInt(array): 
     #Source:
@@ -59,7 +59,7 @@ def readedges(folder, trial):
         'edgel' : edgel }), numnodes, maxconns
 
 def readpos(folder, trial):
-    with open(folder + "/trial" + str(trial) + "/nodepos.txt") as f:
+    with open(folder + "/" + str(trial) + "/nodepos.txt") as f:
         lines = [line for line in f]
     posframe = pd.DataFrame([line.split() for line in lines[1:]])
     posframe.columns = ["px", "py", "pz", "anchor"]
@@ -81,7 +81,15 @@ def breed(folder, trial1, trial2):
     idx = [x[0] for x in edges_group.groups.values() if len(x) ==1]
     differentframe = differentframe.reindex(idx)
     
-    commonchoice1 = [i for i in range(commonframe.shape[0]) if random.random() < 0.5]
+    naivechoice   = [i for i in range(commonframe.shape[0]) if random.random() < 0.25]
+                    # Want a one quarter chance of selecting an edge because it will probably be duplicated.
+    print(naivechoice)
+    commonconj    = [commonframe.index[(commonframe.nodei == commonframe.nodej[choice].item()) & \
+                                       (commonframe.nodej == commonframe.nodei[choice].item())].item() for choice in naivechoice]
+                    # Find the conjugate connection entry for each choice.
+    print(commonconj)
+    commonchoice1 = list(set(naivechoice + commonconj))
+    
     commonchoice2 = [i for i in range(commonframe.shape[0]) if i not in commonchoice1]
     subcomm1 = commonframe.loc[commonchoice1][['edgek_x', 'edgel_x', 'nodei', 'nodej']]
     subcomm1.columns = ['edgek', 'edgel', 'nodei', 'nodej']
@@ -124,27 +132,36 @@ def writeUnstable(folder, nodecon, nodepos, maxconns):
         f.write(filestring)
 
 def mutate(nodecon, nodepos, conmuterate = 0.01, posmuterate = 0.1, conmutesize = 1.2, posmutesize = 0.2):
-    posmute  = [i for i in range(nodepos.shape[0]) if random.random()<posmuterate]
+    posmute  = [i for i in range(nodepos.shape[0]) if random.random()<posmuterate and nodepos.anchor[i] != 'T']
     conmute  = [i for i in range(nodecon.shape[0]) if random.random()<conmuterate]
     conkill  = [i for i in range(nodecon.shape[0]) if random.random()<conmuterate and i not in conmute]
-    killnode = set([nodecon.loc[conn]['nodei'].item() for conn in conkill] + [nodecon.loc[conn]['nodej'].item() for conn in conkill])
+    killpair = [(nodecon.nodei[conn].item(), nodecon.nodej[conn].item()) for conn in conkill]
+    killlist = list(set(killpair + [(x[1], x[0]) for x in killpair]))
     
     for node in posmute:
-        nodepos.loc[node,'px'] += (2*random.random() - 1)*posmutesize
-        nodepos.loc[node,'py'] += (2*random.random() - 1)*posmutesize
-        nodepos.loc[node,'pz'] += (2*random.random() - 1)*posmutesize
+    	nodepos.set_value(node, 'px', nodepos.loc[node,'px'].item() + (2*random.random() - 1)*posmutesize)
+    	nodepos.set_value(node, 'py', nodepos.loc[node,'py'].item() + (2*random.random() - 1)*posmutesize)
+    	nodepos.set_value(node, 'pz', nodepos.loc[node,'pz'].item() + (2*random.random() - 1)*posmutesize)
     
     for conn in conmute:
         nodei, nodej = nodecon.loc[conn][['nodei', 'nodej']]
         print("Mutating connection between %d and %d"%(nodei, nodej))
+        print(nodecon[(nodecon.nodei == nodei) & (nodecon.nodej == nodej)])
         print(nodecon[(nodecon.nodei == nodej) & (nodecon.nodej == nodei)])
-        conj = nodecon[(nodecon.nodei == nodej) & (nodecon.nodej == nodei)].index[0]
-        nodecon.loc[conn,'edgek'] *= conmutesize**(2*random.random()-1)
-        nodecon.loc[conn,'edgel'] *= conmutesize**(2*random.random()-1)
-        nodecon.loc[conj,'edgek'] *= conmutesize**(2*random.random()-1)
-        nodecon.loc[conj,'edgel'] *= conmutesize**(2*random.random()-1)
+        if nodecon[(nodecon.nodei == nodej) & (nodecon.nodej == nodei)].shape[0] >0:
+            conj = nodecon[(nodecon.nodei == nodej) & (nodecon.nodej == nodei)].index[0]
+        else:
+            conj = nodecon.shape[0]
+            print(conj)
+            nodecon.append(pd.DataFrame([0,0,nodej, nodei]), ignore_index = True)
+            print(nodecon.shape[0])
+        nodecon.set_value(conn, 'edgek', nodecon.loc[conn,'edgek'].item() * conmutesize**(2*random.random()-1))
+        nodecon.set_value(conn, 'edgel', nodecon.loc[conn,'edgel'].item() * conmutesize**(2*random.random()-1))
+        nodecon.set_value(conj, 'edgek', nodecon.loc[conj,'edgek'].item())
+        nodecon.set_value(conj, 'edgel', nodecon.loc[conj,'edgel'].item())
     
-    nodecon = nodecon[-(nodecon.nodei.isin(killnode) & nodecon.nodej.isin(killnode))]
+    for pair in killlist:
+        nodecon = nodecon[(nodecon.nodei != pair[0]) | (nodecon.nodej != pair[1])]
     
     nodecon.reset_index(drop = True)
     
@@ -170,7 +187,7 @@ populate(folder, pop)
 #print(os.getcwd())
 
 #On loop:
-for i in range(100):
+for i in range(10):
     
     #kill half
     culling(folder)
@@ -184,12 +201,18 @@ for i in range(100):
         
         #print([x for x in survivors.trial])
         
-        breedingpair = np.random.choice([x for x in survivors.trial], 2, p = goodnessp)
-        
+        #breedingpair = np.random.choice([x for x in survivors.trial], 2, p = goodnessp)
+        parent= np.random.choice([x for x in survivors.trial], 1, p = goodnessp)[0]
+        asexualcon, numnodes, maxconns = readedges(folder, parent)
+        with open(folder + "/" + str(parent) + "/nodepos.txt") as f:
+            lines = [line for line in f]
+        asexualpos = pd.DataFrame([[float(x) for x in line.split()[:-1]]+[line.split()[-1]] for line in lines[1:]])
+        asexualpos.columns = ["px", "py", "pz", "anchor"]
+                
         #print(breedingpair)
         
-        nodecon, nodepos, maxconns = breed(folder, breedingpair[0], breedingpair[1])
-        nodecon, nodepos = mutate(nodecon, nodepos)
+        #nodecon, nodepos, maxconns = breed(folder, breedingpair[0], breedingpair[1])
+        nodecon, nodepos = mutate(asexualcon, asexualpos)
         writeUnstable(folder, nodecon, nodepos, maxconns)
     
     stabilizeChildren(folder)

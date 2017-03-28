@@ -348,6 +348,36 @@ void file_start(char *foldername){
 			}
 			printf("numcon_CPU[%d]: %d\n", i, numcon_CPU[i]);
 		}
+		
+		// if the next block exists, it should be gene cluster flags.
+		// I want to keep the rest of this to copy to the end of the file I create later.
+		// To be implemented later
+		/*
+		fgets(buf, 1000, filecon);
+		fgets(buf, 1000, filecon);
+			//Skip two lines
+		
+		reset_numcon(numcon_CPU);
+
+		printf("\ngene cluster values\n");
+
+		for (i = 0; i < numNodes_CPU; i++){
+
+		//	printf("row %d\n", i);
+			fgets(buf, 1000, filecon);
+			pch = strtok(buf, "\t");
+			while(pch != NULL){
+				
+				length = strtof(pch, (char **)NULL);
+				beaml_CPU[i*maxConns_CPU + numcon_CPU[i]] = length;
+				numcon_CPU[i] += 1;	
+				pch = strtok(NULL, "\t");
+					//Reads the next token
+				//printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
+			}
+			printf("numcon_CPU[%d]: %d\n", i, numcon_CPU[i]);
+		}
+		*/
 	
 	fclose(filecon);
 
