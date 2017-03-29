@@ -44,6 +44,7 @@ def readedges(folder, trial):
     nodej = []
     edgek = []
     edgel = []
+    #genes = []
     
     for i in range(numnodes):
         values = lines[4 + i].split()
@@ -52,11 +53,21 @@ def readedges(folder, trial):
         edgek = edgek + [float(x) for x in lines[6 + numnodes + i].split()]
         edgel = edgel + [float(x) for x in lines[8 + 2*numnodes + i].split()]
     
+    """
+    if len(lines) >= 9 + 4*numnodes:
+        for i in range(numnodes):
+            genes = genes + [int(x) for x in lines[10 + 3*numnodes + i].split()]
+    else:
+    	genes = [0]*len()
+    """
+    
     return pd.DataFrame({
         'nodei' : nodei,
         'nodej' : nodej,
         'edgek' : edgek,
-        'edgel' : edgel }), numnodes, maxconns
+        'edgel' : edgel #,
+        #'gene'  : genes 
+        }), numnodes, maxconns
 
 def readpos(folder, trial):
     with open(folder + "/" + str(trial) + "/nodepos.txt") as f:
@@ -131,7 +142,7 @@ def writeUnstable(folder, nodecon, nodepos, maxconns):
     with open(folder + "/unstablechildren/" + childfile + "/nodepos.txt", "w") as f:
         f.write(filestring)
 
-def mutate(nodecon, nodepos, conmuterate = 0.01, posmuterate = 0.1, conmutesize = 1.2, posmutesize = 0.2):
+def mutate1(nodecon, nodepos, conmuterate = 0.01, posmuterate = 0.1, conmutesize = 1.2, posmutesize = 0.2):
     posmute  = [i for i in range(nodepos.shape[0]) if random.random()<posmuterate and nodepos.anchor[i] != 'T']
     conmute  = [i for i in range(nodecon.shape[0]) if random.random()<conmuterate]
     conkill  = [i for i in range(nodecon.shape[0]) if random.random()<conmuterate and i not in conmute]
@@ -167,6 +178,66 @@ def mutate(nodecon, nodepos, conmuterate = 0.01, posmuterate = 0.1, conmutesize 
     
     return nodecon, nodepos
 
+def mutate2(nodecon, nodepos, conmuterate = 0.01, posmuterate = 0.1, conmutesize = 1.2, posmutesize = 0.2):
+    posmute  = [i for i in range(nodepos.shape[0]) if random.random()<posmuterate and nodepos.anchor[i] != 'T']
+    conmute  = [i for i in range(nodecon.shape[0]) if random.random()<conmuterate]
+    conkill  = [i for i in range(nodecon.shape[0]) if random.random()<conmuterate and i not in conmute]
+    killpair = [(nodecon.nodei[conn].item(), nodecon.nodej[conn].item()) for conn in conkill]
+    killlist = list(set(killpair + [(x[1], x[0]) for x in killpair]))
+    newpair  = [(i,j) for i in range(numnodes) for j in range(numnodes) if (i != j) and (np.random.rand() < conmuterate)]
+    
+    for node1 in posmute:
+    	nodepos.set_value(node1, 'px', nodepos.loc[node1,'px'].item() + (2*random.random() - 1)*posmutesize)
+    	nodepos.set_value(node1, 'py', nodepos.loc[node1,'py'].item() + (2*random.random() - 1)*posmutesize)
+    	nodepos.set_value(node1, 'pz', nodepos.loc[node1,'pz'].item() + (2*random.random() - 1)*posmutesize)
+    	
+    	#Identify all connections involving the mutated node.  Change the lengths accordingly.
+    	conframe1 = nodecon.loc[(nodecon.nodei == node1)]
+    	conframe2 = nodecon.loc[(nodecon.nodej == node1)]
+    	for i in conframe1.index:
+    	    node2 = conframe1.nodej[i].item()
+    	    conframe1.edgel[i] = np.sqrt((nodepos.px[node1] - nodepos.px[node2])**2 + \
+    	                                 (nodepos.py[node1] - nodepos.py[node2])**2 + \
+    	                                 (nodepos.pz[node1] - nodepos.pz[node2])**2)
+    	for i in conframe2.index:
+    	    node2 = conframe2.nodei[i].item()
+    	    conframe2.edgel[i] = np.sqrt((nodepos.px[node1] - nodepos.px[node2])**2 + \
+    	                                 (nodepos.py[node1] - nodepos.py[node2])**2 + \
+    	                                 (nodepos.pz[node1] - nodepos.pz[node2])**2)
+    
+    
+    for conn in conmute:
+        nodei, nodej = nodecon.loc[conn][['nodei', 'nodej']]
+        #print("Mutating connection between %d and %d"%(nodei, nodej))
+        #print(nodecon[(nodecon.nodei == nodei) & (nodecon.nodej == nodej)])
+        #print(nodecon[(nodecon.nodei == nodej) & (nodecon.nodej == nodei)])
+        if nodecon[(nodecon.nodei == nodej) & (nodecon.nodej == nodei)].shape[0] >0:
+            conj = nodecon[(nodecon.nodei == nodej) & (nodecon.nodej == nodei)].index[0]
+        else:
+            conj = nodecon.shape[0]
+            nodecon.append(pd.DataFrame([0,0,nodej, nodei]), ignore_index = True)
+        
+        nodecon.set_value(conn, 'edgek', nodecon.loc[conn,'edgek'].item() * conmutesize**(2*random.random()-1))
+        nodecon.set_value(conj, 'edgek', nodecon.loc[conj,'edgek'].item())
+    
+    for pair in killlist:
+        nodecon = nodecon[(nodecon.nodei != pair[0]) | (nodecon.nodej != pair[1])]
+    
+    meank = np.mean(nodecon.edgek)
+    
+    for pair in newpair:
+        if nodecon[(nodecon.nodei == pair[0]) & (nodecon.nodej == pair[1])].shape[0] == 0:
+            tempdist = np.sqrt((nodepos.px[pair[0]] - nodepos.px[pair[1]])**2 + \
+                               (nodepos.py[pair[0]] - nodepos.py[pair[1]])**2 + \
+                               (nodepos.pz[pair[0]] - nodepos.pz[pair[1]])**2)
+            nodecon.append(pd.DataFrame([[meank, tempdist, pair[0], pair[1]],
+                                         [meank, tempdist, pair[1], pair[0]]]), ignore_index = True)
+    
+    nodecon.reset_index(drop = True)
+    return nodecon, nodepos
+
+
+
 def stabilizeChildren(folder):
     for x in os.listdir(folder+'/unstablechildren'):
         call(['./newstructure.run', folder + '/unstablechildren/' + x, folder])
@@ -181,13 +252,13 @@ def culling(folder):
     alive.to_csv(folder + '/summary.txt', sep='\t', header=True, index = False)
 
 #populate the folder
-populate(folder, pop)
-#print(str(pop))
-#print(folder)
-#print(os.getcwd())
+#uncomment for first generation
+#####
+#populate(folder, pop)
+#####
 
-#On loop:
-for i in range(10):
+generationcap = 250
+for i in range(generationcap):
     
     #kill half
     culling(folder)
@@ -200,7 +271,6 @@ for i in range(10):
     for j in range(pop - survivors.shape[0] + 2):
         
         #print([x for x in survivors.trial])
-        
         #breedingpair = np.random.choice([x for x in survivors.trial], 2, p = goodnessp)
         parent= np.random.choice([x for x in survivors.trial], 1, p = goodnessp)[0]
         asexualcon, numnodes, maxconns = readedges(folder, parent)
@@ -212,9 +282,9 @@ for i in range(10):
         #print(breedingpair)
         
         #nodecon, nodepos, maxconns = breed(folder, breedingpair[0], breedingpair[1])
-        nodecon, nodepos = mutate(asexualcon, asexualpos)
+        nodecon, nodepos = mutate2(asexualcon, asexualpos)
         writeUnstable(folder, nodecon, nodepos, maxconns)
-    
+    print("Stabilizing Generation %d of %d"%(i, generationcap))
     stabilizeChildren(folder)
 
 

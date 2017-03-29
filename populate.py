@@ -200,8 +200,8 @@ def mutate2(nodecon, nodepos, conmuterate = 0.01, posmuterate = 0.1, conmutesize
     	                                 (nodepos.py[node1] - nodepos.py[node2])**2 + \
     	                                 (nodepos.pz[node1] - nodepos.pz[node2])**2)
     	for i in conframe2.index:
-    	    node2 = conframe1.nodei[i].item()
-    	    conframe1.edgel[i] = np.sqrt((nodepos.px[node1] - nodepos.px[node2])**2 + \
+    	    node2 = conframe2.nodei[i].item()
+    	    conframe2.edgel[i] = np.sqrt((nodepos.px[node1] - nodepos.px[node2])**2 + \
     	                                 (nodepos.py[node1] - nodepos.py[node2])**2 + \
     	                                 (nodepos.pz[node1] - nodepos.pz[node2])**2)
     
@@ -252,14 +252,14 @@ def culling(folder):
     alive.to_csv(folder + '/summary.txt', sep='\t', header=True, index = False)
 
 #populate the folder
-populate(folder, pop)
-#print(str(pop))
-#print(folder)
-#print(os.getcwd())
+#uncomment for first generation
+#####
+#populate(folder, pop)
+#####
 
-#On loop:
-for i in range(10):
-    
+generationcap = 250
+for i in range(generationcap):
+    print("Generation %d of %d\n"%(i, generationcap))
     #kill half
     culling(folder)
     
@@ -282,9 +282,8 @@ for i in range(10):
         #print(breedingpair)
         
         #nodecon, nodepos, maxconns = breed(folder, breedingpair[0], breedingpair[1])
-        nodecon, nodepos = mutate1(asexualcon, asexualpos)
+        nodecon, nodepos = mutate2(asexualcon, asexualpos)
         writeUnstable(folder, nodecon, nodepos, maxconns)
-    
     stabilizeChildren(folder)
 
 
