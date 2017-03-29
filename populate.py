@@ -180,40 +180,60 @@ def mutate1(nodecon, nodepos, conmuterate = 0.01, posmuterate = 0.1, conmutesize
 
 def mutate2(nodecon, nodepos, conmuterate = 0.01, posmuterate = 0.1, conmutesize = 1.2, posmutesize = 0.2):
     posmute  = [i for i in range(nodepos.shape[0]) if random.random()<posmuterate and nodepos.anchor[i] != 'T']
-    #conmute  = [i for i in range(nodecon.shape[0]) if random.random()<conmuterate]
-    #conkill  = [i for i in range(nodecon.shape[0]) if random.random()<conmuterate and i not in conmute]
-    #killpair = [(nodecon.nodei[conn].item(), nodecon.nodej[conn].item()) for conn in conkill]
-    #killlist = list(set(killpair + [(x[1], x[0]) for x in killpair]))
+    conmute  = [i for i in range(nodecon.shape[0]) if random.random()<conmuterate]
+    conkill  = [i for i in range(nodecon.shape[0]) if random.random()<conmuterate and i not in conmute]
+    killpair = [(nodecon.nodei[conn].item(), nodecon.nodej[conn].item()) for conn in conkill]
+    killlist = list(set(killpair + [(x[1], x[0]) for x in killpair]))
+    newpair  = [(i,j) for i in range(numnodes) for j in range(numnodes) if (i != j) and (np.random.rand() < conmuterate)]
     
-    for node in posmute:
-    	nodepos.set_value(node, 'px', nodepos.loc[node,'px'].item() + (2*random.random() - 1)*posmutesize)
-    	nodepos.set_value(node, 'py', nodepos.loc[node,'py'].item() + (2*random.random() - 1)*posmutesize)
-    	nodepos.set_value(node, 'pz', nodepos.loc[node,'pz'].item() + (2*random.random() - 1)*posmutesize)
+    for node1 in posmute:
+    	nodepos.set_value(node1, 'px', nodepos.loc[node1,'px'].item() + (2*random.random() - 1)*posmutesize)
+    	nodepos.set_value(node1, 'py', nodepos.loc[node1,'py'].item() + (2*random.random() - 1)*posmutesize)
+    	nodepos.set_value(node1, 'pz', nodepos.loc[node1,'pz'].item() + (2*random.random() - 1)*posmutesize)
     	
-    	conframe = nodecon.loc[nodecon.nodei == node]
+    	#Identify all connections involving the mutated node.  Change the lengths accordingly.
+    	conframe1 = nodecon.loc[(nodecon.nodei == node1)]
+    	conframe2 = nodecon.loc[(nodecon.nodej == node1)]
+    	for i in conframe1.index:
+    	    node2 = conframe1.nodej[i].item()
+    	    conframe1.edgel[i] = np.sqrt((nodepos.px[node1] - nodepos.px[node2])**2 + \
+    	                                 (nodepos.py[node1] - nodepos.py[node2])**2 + \
+    	                                 (nodepos.pz[node1] - nodepos.pz[node2])**2)
+    	for i in conframe2.index:
+    	    node2 = conframe1.nodei[i].item()
+    	    conframe1.edgel[i] = np.sqrt((nodepos.px[node1] - nodepos.px[node2])**2 + \
+    	                                 (nodepos.py[node1] - nodepos.py[node2])**2 + \
+    	                                 (nodepos.pz[node1] - nodepos.pz[node2])**2)
+    
     
     for conn in conmute:
         nodei, nodej = nodecon.loc[conn][['nodei', 'nodej']]
-        print("Mutating connection between %d and %d"%(nodei, nodej))
-        print(nodecon[(nodecon.nodei == nodei) & (nodecon.nodej == nodej)])
-        print(nodecon[(nodecon.nodei == nodej) & (nodecon.nodej == nodei)])
+        #print("Mutating connection between %d and %d"%(nodei, nodej))
+        #print(nodecon[(nodecon.nodei == nodei) & (nodecon.nodej == nodej)])
+        #print(nodecon[(nodecon.nodei == nodej) & (nodecon.nodej == nodei)])
         if nodecon[(nodecon.nodei == nodej) & (nodecon.nodej == nodei)].shape[0] >0:
             conj = nodecon[(nodecon.nodei == nodej) & (nodecon.nodej == nodei)].index[0]
         else:
             conj = nodecon.shape[0]
-            print(conj)
             nodecon.append(pd.DataFrame([0,0,nodej, nodei]), ignore_index = True)
-            print(nodecon.shape[0])
+        
         nodecon.set_value(conn, 'edgek', nodecon.loc[conn,'edgek'].item() * conmutesize**(2*random.random()-1))
-        nodecon.set_value(conn, 'edgel', nodecon.loc[conn,'edgel'].item() * conmutesize**(2*random.random()-1))
         nodecon.set_value(conj, 'edgek', nodecon.loc[conj,'edgek'].item())
-        nodecon.set_value(conj, 'edgel', nodecon.loc[conj,'edgel'].item())
     
     for pair in killlist:
         nodecon = nodecon[(nodecon.nodei != pair[0]) | (nodecon.nodej != pair[1])]
     
-    nodecon.reset_index(drop = True)
+    meank = np.mean(nodecon.edgek)
     
+    for pair in newpair:
+        if nodecon[(nodecon.nodei == pair[0]) & (nodecon.nodej == pair[1])].shape[0] == 0:
+            tempdist = np.sqrt((nodepos.px[pair[0]] - nodepos.px[pair[1]])**2 + \
+                               (nodepos.py[pair[0]] - nodepos.py[pair[1]])**2 + \
+                               (nodepos.pz[pair[0]] - nodepos.pz[pair[1]])**2)
+            nodecon.append(pd.DataFrame([[meank, tempdist, pair[0], pair[1]],
+                                         [meank, tempdist, pair[1], pair[0]]]), ignore_index = True)
+    
+    nodecon.reset_index(drop = True)
     return nodecon, nodepos
 
 
@@ -251,7 +271,6 @@ for i in range(10):
     for j in range(pop - survivors.shape[0] + 2):
         
         #print([x for x in survivors.trial])
-        
         #breedingpair = np.random.choice([x for x in survivors.trial], 2, p = goodnessp)
         parent= np.random.choice([x for x in survivors.trial], 1, p = goodnessp)[0]
         asexualcon, numnodes, maxconns = readedges(folder, parent)
