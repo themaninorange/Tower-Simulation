@@ -1,7 +1,7 @@
 /*
 Joseph Brown
 
-nvcc newstructure.cu -o temp -lglut -lm -lGLU -lGL -std=c++11
+nvcc visualnewstructure.cu -o see.run -lglut -lm -lGLU -lGL -std=c++11
 */
 
 #include <GL/glut.h>
@@ -14,6 +14,7 @@ nvcc newstructure.cu -o temp -lglut -lm -lGLU -lGL -std=c++11
 #include <sys/stat.h>
 #include <random>
 #include <cstdio>
+#include "imgRec.h"
 
 #define PI 3.141592654
 
@@ -265,7 +266,7 @@ void file_start(char *foldername){
 	filecon = fopen(filename, "r");
 
 		printf("pass fileopen\n");
-
+		printf("%s\n", filename);
 		fgets(buf, 1000, filecon);
 		numNodes_CPU = (int) strtol(&buf[6], (char **)NULL, 10);
 			//Nodes: [numNodes]
@@ -817,9 +818,11 @@ double fastest_cnxn(Connection *cnx){
 	int i;
 	double max_fastness = 0;
 	for(i = 0; i < numNodes_CPU; i++){
-		max_fastness = max(max_fastness, sqrt(cnx[i].vx*cnx[i].vx+
-						      cnx[i].vy*cnx[i].vy+
-						      cnx[i].vz*cnx[i].vz));
+		if(numcon_CPU[i] >= 3){
+			max_fastness = max(max_fastness, sqrt(cnx[i].vx*cnx[i].vx+
+							      cnx[i].vy*cnx[i].vy+
+							      cnx[i].vz*cnx[i].vz));
+		}
 	}
 	return(max_fastness);
 }
@@ -1132,6 +1135,7 @@ void Display(void)
 	
 	draw_picture();
 	glutSwapBuffers();
+	//makePicture("record1", XWindowSize, YWindowSize, 1);
 	glFlush();// 
 }
 
@@ -1164,13 +1168,14 @@ int main(int argc, char *argv[])
 	if(argc == 1){
 		flag = 'X';
 	} else if(argc == 2){
-		asprintf(&popfolder,   "%s", argv[1]);
+		asprintf(&readfolder1,   "%s", argv[1]);
 
-		flag = 'X';
+		flag = 's';
 	} else if(argc == 3){
 		asprintf(&readfolder1, "%s", argv[1]);
 		asprintf(&popfolder,   "%s", argv[2]);
 
+		printf("%s\n%s\n", readfolder1, popfolder);
 		flag = 's';
 	} else if(argc == 4){
 		asprintf(&readfolder1, "%s", argv[1]);
@@ -1209,8 +1214,8 @@ int main(int argc, char *argv[])
 	glEnable(GL_DEPTH_TEST);
 	
 	set_initial_conditions();
-	
-	gluLookAt(0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
+	double sg = goodness();
+	gluLookAt(0.0, sg/2, sg/2 + 2.0,    0.0, sg/2, 0.0,     0.0, 1.0, 0.0);
 	glutDisplayFunc(Display);
 	glutTimerFunc(1, update, 0);
 	glutReshapeFunc(reshape);

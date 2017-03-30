@@ -3,14 +3,27 @@ import os
 import random
 import shutil
 import numpy as np
+import sys
 from subprocess import call
 
 os.getcwd()
 os.chdir('/media/storage/CUDAClasses/CUDACLASS2017/JosephBrown/BigProject')
 #os.chdir('/home/joseph/Dev/c_projects/CUDA/Energy Transfer Tower/')
 
-pop = 20
-folder = "runningpop3"
+if len(sys.argv) >= 2:
+    folder = sys.argv[1]
+else:
+    folder = "dump"
+
+if len(sys.argv) >= 3:
+    pop = int(sys.argv[2])
+else:
+    pop = 10
+
+if len(sys.argv) >= 4:
+    generationcap = int(sys.argv[3])
+else:
+    generationcap = 10
 
 def firstInt(array): 
     #Source:
@@ -218,7 +231,7 @@ def mutate2(nodecon, nodepos, conmuterate = 0.01, posmuterate = 0.1, conmutesize
             nodecon.append(pd.DataFrame([0,0,nodej, nodei]), ignore_index = True)
         
         nodecon.set_value(conn, 'edgek', nodecon.loc[conn,'edgek'].item() * conmutesize**(2*random.random()-1))
-        nodecon.set_value(conj, 'edgek', nodecon.loc[conj,'edgek'].item())
+        nodecon.set_value(conj, 'edgek', nodecon.loc[conn,'edgek'].item())
     
     for pair in killlist:
         nodecon = nodecon[(nodecon.nodei != pair[0]) | (nodecon.nodej != pair[1])]
@@ -251,13 +264,24 @@ def culling(folder):
         shutil.rmtree(folder + '/' + x)
     alive.to_csv(folder + '/summary.txt', sep='\t', header=True, index = False)
 
-#populate the folder
-#uncomment for first generation
-#####
-#populate(folder, pop)
+#init stuff
+if folder not in os.listdir('./'):
+    os.mkdir(folder)
+
+if 'unstablechildren' not in os.listdir('./' + folder):
+    os.mkdir(folder + '/unstablechildren')
+
+if 'summary.txt' not in os.listdir('./' + folder):
+    with open(folder + '/summary.txt', 'w') as f:
+        f.write('trial\tgoodness\n')
+
+with open(folder + '/summary.txt', 'r') as f:
+    temp = [line for line in f]
+    if len(temp) <= 1:
+	populate(folder, pop)
+
 #####
 
-generationcap = 250
 for i in range(generationcap):
     print("Generation %d of %d\n"%(i, generationcap))
     #kill half
@@ -282,6 +306,7 @@ for i in range(generationcap):
         #print(breedingpair)
         
         #nodecon, nodepos, maxconns = breed(folder, breedingpair[0], breedingpair[1])
+	print(parent)
         nodecon, nodepos = mutate2(asexualcon, asexualpos)
         writeUnstable(folder, nodecon, nodepos, maxconns)
     stabilizeChildren(folder)

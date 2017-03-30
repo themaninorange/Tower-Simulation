@@ -1,7 +1,7 @@
 /*
 Joseph Brown
 
-nvcc newstructure.cu -o temp -lglut -lm -lGLU -lGL -std=c++11
+nvcc tempnewstructure.cu -o temp -lglut -lm -lGLU -lGL -std=c++11
 */
 
 #include <GL/glut.h>
@@ -26,7 +26,7 @@ nvcc newstructure.cu -o temp -lglut -lm -lGLU -lGL -std=c++11
 
 #define STOP_TIME 1.0
 #define DT        0.005
-#define MAXTRIES  50
+#define MAXTRIES  200
 #define MAXVEL	  0.1
 
 #define GRAVITY 0.1 
@@ -111,12 +111,12 @@ bool isRunning = true;
 void AllocateMemory(){
 
 	printf("Allocating mem with\nnumNodes_CPU: %d\nmaxConns_CPU: %d\n", numNodes_CPU, maxConns_CPU);
-	printf("passA1\n");
+	//printf("passA1\n");
 	cnx_CPU = (Connection*)malloc( sizeof(Connection) * numNodes_CPU);
 	cudaMalloc((void**)&cnx_GPU, sizeof(Connection) * numNodes_CPU);
 
 	numcon_CPU  = (int *)malloc(numNodes_CPU*sizeof(int));
-	printf("passA2\n");
+	//printf("passA2\n");
 
 	beami_CPU = (int    *)malloc(numNodes_CPU * maxConns_CPU * sizeof(int)   );
         beamk_CPU = (double *)malloc(numNodes_CPU * maxConns_CPU * sizeof(double));
@@ -131,7 +131,7 @@ void AllocateMemory(){
         cudaMalloc((void**)&beaml_GPU, numNodes_CPU * maxConns_CPU * sizeof(double));
         cudaMalloc((void**)& fail_GPU, numNodes_CPU * maxConns_CPU * sizeof(bool)  );
 
-	printf("passA3\n");
+	//printf("passA3\n");
 
 }
 
@@ -241,7 +241,7 @@ void random_start(){
 void reset_numcon(int *numcon){
 	int i;
 
-	printf("\nRESETTING NUMCON\n");
+	//printf("\nRESETTING NUMCON\n");
 	for(i = 0; i < numNodes_CPU; i++){
 		numcon[i] = 0;
 		//printf("numcon[%3d]: %3d\n", i , numcon[i]);
@@ -261,10 +261,10 @@ void file_start(char *foldername){
 
 	asprintf(&filename, "%s%s", foldername, "/nodecon.txt");
 	
-	printf("pass filename\n");
+	//printf("pass filename\n");
 	filecon = fopen(filename, "r");
 
-		printf("pass fileopen\n");
+		//printf("pass fileopen\n");
 
 		fgets(buf, 1000, filecon);
 		numNodes_CPU = (int) strtol(&buf[6], (char **)NULL, 10);
@@ -282,7 +282,7 @@ void file_start(char *foldername){
 
 		reset_numcon(numcon_CPU);
 	
-		printf("\nbeami values\n");
+		//printf("\nbeami values\n");
 		for (i = 0; i < numNodes_CPU; i++){
 					
 			fgets(buf, 1000, filecon);
@@ -296,7 +296,7 @@ void file_start(char *foldername){
 					//Reads the next token
 			//	printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
 			}
-			printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
+			//printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
 		}
 
 		fgets(buf, 1000, filecon);
@@ -305,7 +305,7 @@ void file_start(char *foldername){
 		
 		reset_numcon(numcon_CPU);
 
-		printf("\nbeamk values\n");
+		//printf("\nbeamk values\n");
 
 		for (i = 0; i < numNodes_CPU; i++){
 
@@ -318,7 +318,7 @@ void file_start(char *foldername){
 				numcon_CPU[i] += 1;	
 				pch = strtok(NULL, "\t");
 			}
-			printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
+			//printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
 
 
 		}
@@ -330,7 +330,7 @@ void file_start(char *foldername){
 		
 		reset_numcon(numcon_CPU);
 
-		printf("\nbeaml values\n");
+		//printf("\nbeaml values\n");
 
 		for (i = 0; i < numNodes_CPU; i++){
 
@@ -346,7 +346,7 @@ void file_start(char *foldername){
 					//Reads the next token
 				//printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
 			}
-			printf("numcon_CPU[%d]: %d\n", i, numcon_CPU[i]);
+			//printf("numcon_CPU[%d]: %d\n", i, numcon_CPU[i]);
 		}
 		
 		// if the next block exists, it should be gene cluster flags.
@@ -403,7 +403,7 @@ void file_start(char *foldername){
 		}
 
 	fclose(filecon);	
-	printf("File reading passed.\n");
+	//printf("File reading passed.\n");
 
 
 }
@@ -783,7 +783,7 @@ void set_initial_conditions()
 	k_anchor = 4000;
 	k_const = 1;
 	rod_proportion = 10;
-	dampening_CPU = 20;
+	dampening_CPU = 100;
 
 	create_beams();
 	
@@ -847,9 +847,11 @@ double fastest_cnxn(Connection *cnx){
 	int i;
 	double max_fastness = 0;
 	for(i = 0; i < numNodes_CPU; i++){
-		max_fastness = max(max_fastness, sqrt(cnx[i].vx*cnx[i].vx+
-						      cnx[i].vy*cnx[i].vy+
-						      cnx[i].vz*cnx[i].vz));
+		if(numcon_CPU[i] >=3){
+			max_fastness = max(max_fastness, sqrt(cnx[i].vx*cnx[i].vx+
+							      cnx[i].vy*cnx[i].vy+
+							      cnx[i].vz*cnx[i].vz));
+		}
 	}
 	return(max_fastness);
 }
@@ -1025,12 +1027,32 @@ __global__ void calcVP(Connection *cnx) {
 
 double goodness(){
 
-	int i;
+	int i, j;
 	double maxheight = 0;
+	int failedBeams = 0;
+
 	for (i = 0; i < numNodes_CPU; i++){
-		maxheight = max(cnx_CPU[i].py, maxheight);
+		//printf("%d\n", numcon_CPU[i]);
+		if (numcon_CPU[i] >= 3){	//We don't care about things that just happen to have swung upward at the right time and stick.
+			maxheight = max(cnx_CPU[i].py, maxheight);
+		}
 	}
-	return(maxheight);
+
+	for (i = 0; i < numNodes_CPU; i++){
+		for (j = 0; j < numcon_CPU[i]; j++){
+			if(fail_CPU[i*maxConns_CPU + j]){
+				failedBeams++;
+			}
+		}
+	}
+
+	//printf("\ngoodnesscomponents\n%.8f\n%d\n", maxheight, failedBeams);
+	//return(maxheight);
+	if (failedBeams == 0){
+		return(maxheight);
+	} else {
+		return(maxheight/failedBeams);
+	}
 }
 
 void update(int value){
@@ -1067,6 +1089,7 @@ void update(int value){
 					result = mkdir(filetry, ACCESSPERMS);
 					//printf("trying %d\n", trial);
 					//printf("result %d\n", result);
+					//printf(filetry);
  				}
 				printf("Writing trial%d...\n", trial);
 				//printf("passloop1\n");
@@ -1135,7 +1158,7 @@ void update(int value){
 				fclose(filecon);
 
 				filecon = fopen(popsumm, "a");
-					fprintf(filecon, "trial%d\t%.3f\n", trial, goodness());
+					fprintf(filecon, "trial%d\t%.5f\n", trial, goodness());
 				fclose(filecon);
 
 				printf("written.\n");
@@ -1145,10 +1168,12 @@ void update(int value){
 		} else if (attempt < MAXTRIES){
 			attempt += 1;
 			timerunning = 0;
+			//printf("Attempt %d/%d with timestep %.2f.\n", attempt, MAXTRIES, STOP_TIME);
 
 		//	glutTimerFunc(1, update, 0);
 		} else {
 			isRunning = false;
+			printf("\nUnstable.\nCurrent velocity: %.3f\nMax velocity: %.3f\n\n", fastest_cnxn(cnx_CPU), MAXVEL);
 		}
 	}
 }

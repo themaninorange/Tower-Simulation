@@ -3,14 +3,21 @@ import os
 import random
 import shutil
 import numpy as np
+import sys
 from subprocess import call
 
 os.getcwd()
 os.chdir('/media/storage/CUDAClasses/CUDACLASS2017/JosephBrown/BigProject')
 #os.chdir('/home/joseph/Dev/c_projects/CUDA/Energy Transfer Tower/')
 
-pop = 20
-folder = "runningpop3"
+if len(sys.argv) >= 2:
+    folder = sys.argv[1]
+else:
+    folder = "dump"
+if len(sys.argv) >= 3:
+    pop = 10
+if len(sys.argv) >= 4:
+    generationcap = 10
 
 def firstInt(array): 
     #Source:
@@ -254,12 +261,11 @@ def culling(folder):
 #populate the folder
 #uncomment for first generation
 #####
-#populate(folder, pop)
+populate(folder, pop)
 #####
 
-generationcap = 250
 for i in range(generationcap):
-    
+    print("Generation %d of %d\n"%(i, generationcap))
     #kill half
     culling(folder)
     
@@ -284,7 +290,6 @@ for i in range(generationcap):
         #nodecon, nodepos, maxconns = breed(folder, breedingpair[0], breedingpair[1])
         nodecon, nodepos = mutate2(asexualcon, asexualpos)
         writeUnstable(folder, nodecon, nodepos, maxconns)
-    print("Stabilizing Generation %d of %d"%(i, generationcap))
     stabilizeChildren(folder)
 
 
