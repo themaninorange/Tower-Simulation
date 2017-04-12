@@ -98,11 +98,13 @@ int 	*juncpair1_CPU;
 int	*juncpair2_CPU;
 double	*juncangle_CPU;
 double	*junck_CPU;
+bool    *juncfail_CPU
 
 int 	*juncpair1_GPU;
 int	*juncpair2_GPU;
 double	*juncangle_GPU;
 double	*junck_GPU;
+bool    *juncfail_GPU;
 
 char timestring[16] ;
 char fastnessstring[18] ;	
@@ -133,6 +135,12 @@ void AllocateMemory(){
         beaml_CPU = (double *)malloc(numNodes_CPU * maxConns_CPU * sizeof(double));
         fail_CPU  = (bool   *)malloc(numNodes_CPU * maxConns_CPU * sizeof(bool)  );
 
+	juncpair1_CPU = (int    *)malloc(numNodes_CPU * maxConns_CPU*maxConns_CPU * sizeof(int)   );
+	juncpair2_CPU = (int    *)malloc(numNodes_CPU * maxConns_CPU*maxConns_CPU * sizeof(int)   );
+	juncangle_CPU = (double *)malloc(numNodes_CPU * maxConns_CPU*maxConns_CPU * sizeof(double));
+	    junck_CPU = (double *)malloc(numNodes_CPU * maxConns_CPU*maxConns_CPU * sizeof(double));
+	 juncfail_CPU = (double *)malloc(numNodes_CPU * maxConns_CPU*maxConns_CPU * sizeof(bool  ));
+
 
 	cudaMalloc((void**)&numcon_GPU, numNodes_CPU* sizeof(int));
 
@@ -140,6 +148,12 @@ void AllocateMemory(){
         cudaMalloc((void**)&beamk_GPU, numNodes_CPU * maxConns_CPU * sizeof(double));
         cudaMalloc((void**)&beaml_GPU, numNodes_CPU * maxConns_CPU * sizeof(double));
         cudaMalloc((void**)& fail_GPU, numNodes_CPU * maxConns_CPU * sizeof(bool)  );
+
+        cudaMalloc((void**)&juncpair1_GPU, numNodes_CPU * maxConns_CPU*maxConns_CPU * sizeof(int)   );
+        cudaMalloc((void**)&juncpair2_GPU, numNodes_CPU * maxConns_CPU*maxConns_CPU * sizeof(int)   );
+        cudaMalloc((void**)&juncangle_GPU, numNodes_CPU * maxConns_CPU*maxConns_CPU * sizeof(double));
+        cudaMalloc((void**)&    junck_GPU, numNodes_CPU * maxConns_CPU*maxConns_CPU * sizeof(double));
+        cudaMalloc((void**)& juncfail_GPU, numNodes_CPU * maxConns_CPU*maxConns_CPU * sizeof(bool)  );
 
 	//printf("passA3\n");
 
@@ -154,6 +168,12 @@ void CleanUp(){
         free(beaml_CPU  ) ;
         free(fail_CPU   ) ;
 	free(numcon_CPU ) ;
+	free(juncpair1_CPU);	
+	free(juncpair2_CPU);	
+	free(juncangle_CPU);	
+	free(    junck_CPU);	
+	free( juncfail_CPU);	
+	
 
 	printf("Freeing GPU memory.\n");
 	cudaFree(cnx_GPU);
@@ -161,6 +181,12 @@ void CleanUp(){
         cudaFree(beamk_GPU  ) ;
         cudaFree(beaml_GPU  ) ;
         cudaFree(fail_GPU   ) ;
+	cudaFree(juncpair1_GPU);
+	cudaFree(juncpair2_GPU);
+	cudaFree(juncangle_GPU);
+	cudaFree(    junck_GPU);
+	cudaFree( juncfail_GPU);
+
 
 	printf("Memory Freed.\n");
 }
@@ -171,7 +197,7 @@ void random_start(){
 	numNodes_CPU = N;
 	AllocateMemory();
 
-	int i, j;
+	int i, j, k;
 
 	for(i = 0; i < numNodes_CPU; i++){
 		cnx_CPU[i].px = 2.0*i/numNodes_CPU-1;
@@ -246,6 +272,17 @@ void random_start(){
 			printf("length:          %.3f\n\n", beaml_CPU[i*maxConns_CPU + j]);
 		}
 	}
+	for(i = 0; i < numNodes_CPU; i++){
+		for(j = 0 ; j < numcon_CPU[i]; j++){
+			for(k = 0 ; k < numcon_CPU[i]; k++){
+				juncpair1_CPU[i*maxConns_CPU*maxConns_CPU + j*numcon_CPU[i] + k] = beami_CPU[i*maxConns_CPU + j];
+				juncpair2_CPU[i*maxConns_CPU*maxConns_CPU + j*numcon_CPU[i] + k] = beami_CPU[i*maxConns_CPU + k];
+				juncangle_CPU[i*maxConns_CPU*maxConns_CPU + j*numcon_CPU[i] + k] = rnd(PI);
+				    junck_CPU[i*maxConns_CPU*maxConns_CPU + j*numcon_CPU[i] + k] = rnd(30.0);
+			}
+		}
+	}
+
 }// */
 
 void reset_numcon(int *numcon){
@@ -811,16 +848,15 @@ void set_initial_conditions()
 	}	//Assigns radius to spheres based on cnx_CPU.mass.
 	
 	printf("before memcpy\n");	
-	cudaMemcpy(cnx_GPU,    cnx_CPU,                 numNodes_CPU*sizeof(Connection), cudaMemcpyHostToDevice);
-	printf("copy 1\n");
-	cudaMemcpy(numcon_GPU, numcon_CPU, 		numNodes_CPU*sizeof(int),        cudaMemcpyHostToDevice);
-	printf("copy 2\n");
-	cudaMemcpy(beami_GPU,  beami_CPU,  maxConns_CPU*numNodes_CPU*sizeof(int),        cudaMemcpyHostToDevice);
-	printf("copy 3\n");
-	cudaMemcpy(beamk_GPU,  beamk_CPU,  maxConns_CPU*numNodes_CPU*sizeof(double),     cudaMemcpyHostToDevice);
-	printf("copy 4\n");
-	cudaMemcpy(beaml_GPU,  beaml_CPU,  maxConns_CPU*numNodes_CPU*sizeof(double),     cudaMemcpyHostToDevice);
-
+	cudaMemcpy(      cnx_GPU,       cnx_CPU,	                     numNodes_CPU * sizeof(Connection), cudaMemcpyHostToDevice);
+	cudaMemcpy(   numcon_GPU,    numcon_CPU,	    	             numNodes_CPU * sizeof(int),        cudaMemcpyHostToDevice);
+	cudaMemcpy(    beami_GPU,     beami_CPU,	      maxConns_CPU * numNodes_CPU * sizeof(int),        cudaMemcpyHostToDevice);
+	cudaMemcpy(    beamk_GPU,     beamk_CPU,	      maxConns_CPU * numNodes_CPU * sizeof(double),     cudaMemcpyHostToDevice);
+	cudaMemcpy(    beaml_GPU,     beaml_CPU,	      maxConns_CPU * numNodes_CPU * sizeof(double),     cudaMemcpyHostToDevice);
+	cudaMemcpy(juncpair1_GPU, juncpair1_CPU, maxConns_CPU*maxConns_CPU * numNodes_CPU * sizeof(int),        cudaMemcpyHostToDevice);
+	cudaMemcpy(juncpair2_GPU, juncpair2_CPU, maxConns_CPU*maxConns_CPU * numNodes_CPU * sizeof(int),        cudaMemcpyHostToDevice);
+	cudaMemcpy(juncangle_GPU, juncangle_CPU, maxConns_CPU*maxConns_CPU * numNodes_CPU * sizeof(double),     cudaMemcpyHostToDevice);
+	cudaMemcpy(    junck_GPU,     junck_CPU, maxConns_CPU*maxConns_CPU * numNodes_CPU * sizeof(double),     cudaMemcpyHostToDevice);
 
 	printf("after memcpy\n");	
 /*	for (i = 0; i < numNodes_CPU; i++){
