@@ -162,12 +162,12 @@ void AllocateMemory(){
 void CleanUp(){
 	
 	printf("Freeing CPU memory.\n");
-	free(cnx_CPU);
-	free(beami_CPU  ) ;
-        free(beamk_CPU  ) ;
-        free(beaml_CPU  ) ;
-        free(fail_CPU   ) ;
-	free(numcon_CPU ) ;
+	free(      cnx_CPU);
+	free(    beami_CPU);
+        free(    beamk_CPU);
+        free(    beaml_CPU);
+        free(     fail_CPU);
+	free(   numcon_CPU);
 	free(juncpair1_CPU);	
 	free(juncpair2_CPU);	
 	free(juncangle_CPU);	
@@ -176,11 +176,11 @@ void CleanUp(){
 	
 
 	printf("Freeing GPU memory.\n");
-	cudaFree(cnx_GPU);
-	cudaFree(beami_GPU  ) ;
-        cudaFree(beamk_GPU  ) ;
-        cudaFree(beaml_GPU  ) ;
-        cudaFree(fail_GPU   ) ;
+	cudaFree(      cnx_GPU);
+	cudaFree(    beami_GPU);
+        cudaFree(    beamk_GPU);
+        cudaFree(    beaml_GPU);
+        cudaFree(     fail_GPU);
 	cudaFree(juncpair1_GPU);
 	cudaFree(juncpair2_GPU);
 	cudaFree(juncangle_GPU);
