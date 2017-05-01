@@ -183,6 +183,28 @@ def writeUnstable(folder, nodecon, nodepos, maxconns):
     with open(folder + "/unstablechildren/" + childfile + "/nodepos.txt", "w") as f:
         f.write(filestring)
 
+def writeUnstable2(folder, nodepos, nodepos, juncval, maxconns):
+    
+    childfile = 'child' + str(firstInt([0] + [int(x[5:]) for x in os.listdir(folder + "/unstablechildren") if x[:5] == "child"]))
+    os.mkdir(folder + "/unstablechildren/" + childfile)
+    numnodes = nodepos.shape[0]
+    
+    filestring = "Nodes: " + str(numnodes) + \
+    "\nMax Connections: " + str(maxconns) + \
+    "\n\nbeami\n" + "\n".join(["\t"+"\t".join([str(x) for x in nodecon[nodecon['nodei'] == i]['nodej']]) for i in range(numnodes)]) + \
+    "\n\nbeamk\n" + "\n".join(["\t"+"\t".join([str(x) for x in nodecon[nodecon['nodei'] == i]['edgek']]) for i in range(numnodes)]) + \
+    "\n\nbeaml\n" + "\n".join(["\t"+"\t".join([str(x) for x in nodecon[nodecon['nodei'] == i]['edgel']]) for i in range(numnodes)])
+    
+    with open(folder + "/unstablechildren/" + childfile + "/nodecon.txt", "w") as f:
+        f.write(filestring)
+
+    filestring = "px\tpy\tpz\tanchor\n" + "\n".join(["\t".join([str(x) for x in nodepos.loc[i]]) for i in range(numnodes)])
+    with open(folder + "/unstablechildren/" + childfile + "/nodepos.txt", "w") as f:
+        f.write(filestring)
+    
+    
+    
+
 def mutate1(nodecon, nodepos, conmuterate = 0.01, posmuterate = 0.1, conmutesize = 1.2, posmutesize = 0.2):
     posmute  = [i for i in range(nodepos.shape[0]) if random.random()<posmuterate and nodepos.anchor[i] != 'T']
     conmute  = [i for i in range(nodecon.shape[0]) if random.random()<conmuterate]
