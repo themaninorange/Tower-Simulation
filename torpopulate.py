@@ -99,6 +99,8 @@ def readjuncs(folder, trial, edgeframe):
     omegas = []
     edgei = []
     edgej = []
+    nodes = []
+    center = []
     
     for i in range(numnodes):
         dungus = list(edgeframe.index[(edgeframe.nodei == i)])
@@ -109,12 +111,17 @@ def readjuncs(folder, trial, edgeframe):
         for j in dungus:
             edgei  = edgei  + [j]*numBeams
             edgej  = edgej  + dungus
-    
+            dongles = [(set([edgeframe.nodei[j], edgeframe.nodej[j]]), set([edgeframe.nodei[x], edgeframe.nodej[x]])) for x in dungus]
+            nodes  = nodes  + [x[0].union(x[1]) for x in dongles] 
+            center = center + [x[0].intersection(x[1]) for x in dongles]
     return pd.DataFrame({
         'edgei' : edgei,
         'edgej' : edgej,
         'theta' : thetas,
-        'omega' : omegas #,
+        'omega' : omegas,
+        'nodes' : nodes,
+        'center': center
+        #,
         #'gene'  : genes 
         })
 
@@ -182,6 +189,58 @@ def writeUnstable(folder, nodecon, nodepos, maxconns):
     filestring = "px\tpy\tpz\tanchor\n" + "\n".join(["\t".join([str(x) for x in nodepos.loc[i]]) for i in range(numnodes)])
     with open(folder + "/unstablechildren/" + childfile + "/nodepos.txt", "w") as f:
         f.write(filestring)
+
+def writeUnstable2(folder, nodecon, nodepos, juncval, maxconns):
+    
+    def take(x):
+        if x in taken:
+            return True
+        taken.append(x)
+        return False
+    
+    childfile = 'child' + str(firstInt([0] + [int(x[5:]) for x in os.listdir(folder + "/unstablechildren") if x[:5] == "child"]))
+    os.mkdir(folder + "/unstablechildren/" + childfile)
+    numnodes = nodepos.shape[0]
+    
+    filestring = "Nodes: " + str(numnodes) + \
+    "\nMax Connections: " + str(maxconns) + \
+    "\n\nbeami\n" + "\n".join(["\t"+"\t".join([str(x) for x in nodecon[nodecon['nodei'] == i]['nodej']]) for i in range(numnodes)]) + \
+    "\n\nbeamk\n" + "\n".join(["\t"+"\t".join([str(x) for x in nodecon[nodecon['nodei'] == i]['edgek']]) for i in range(numnodes)]) + \
+    "\n\nbeaml\n" + "\n".join(["\t"+"\t".join([str(x) for x in nodecon[nodecon['nodei'] == i]['edgel']]) for i in range(numnodes)])
+    
+    with open(folder + "/unstablechildren/" + childfile + "/nodecon.txt", "w") as f:
+        f.write(filestring)
+
+    filestring = "px\tpy\tpz\tanchor\n" + "\n".join(["\t".join([str(x) for x in nodepos.loc[i]]) for i in range(numnodes)])
+    with open(folder + "/unstablechildren/" + childfile + "/nodepos.txt", "w") as f:
+        f.write(filestring)
+    
+    stringlistthetas = []
+    stringlistomegas = []
+    for i in range(numnodes):
+        
+        indices = [idx for idx in juncval.index if i in juncval.center[idx]]
+        dangle = juncval.loc[indices]
+        
+        tupTheta = [list(x) for x in zip([list(y) for y in juncval.nodes[indices]], juncval.theta[indices])]
+        tupOmega = [list(x) for x in zip([list(y) for y in juncval.nodes[indices]], juncval.omega[indices])]
+        
+        dongle = [[[a for a in x[0] if a != i], x[1]] if len(x[0]) == 3 else [[a for a in x[0] if a != i]*2, x[1]] for x in tupTheta]
+        dongle.sort(key=lambda thing: (thing[0][0], thing[0][1]))
+        taken = []
+        dramgus = ["%.3f"%x[1] for x in dongle if not take(x[0])]
+        stringlistthetas.append('\t'.join(dramgus))
+        
+        dongle = [[[a for a in x[0] if a != i], x[1]] if len(x[0]) == 3 else [[a for a in x[0] if a != i]*2, x[1]] for x in tupOmega]
+        dongle.sort(key=lambda thing: (thing[0][0], thing[0][1]))
+        taken = []
+        dramgus = ["%.3f"%x[1] for x in dongle if not take(x[0])]
+        stringlistomegas.append('\t' + '\t'.join(dramgus))
+    
+    filestring = "defaultTheta\n" + '\n'.join(stringlistthetas) + '\n\nangleSpringConst\n' + '\n'.join(stringlistomegas)
+    with open(folder + "/unstablechildren/" + childfile + "/juncval.txt", "w") as f:
+        f.write(filestring)
+
 
 def mutate1(nodecon, nodepos, conmuterate = 0.01, posmuterate = 0.1, conmutesize = 1.2, posmutesize = 0.2):
     posmute  = [i for i in range(nodepos.shape[0]) if random.random()<posmuterate and nodepos.anchor[i] != 'T']
@@ -277,6 +336,63 @@ def mutate2(nodecon, nodepos, conmuterate = 0.01, posmuterate = 0.1, conmutesize
     nodecon.reset_index(drop = True)
     return nodecon, nodepos
 
+def mutate3(nodecon, nodepos, juncval, conmuterate = 0.01, posmuterate = 0.1, juncmuterate = 0.01, conmutesize = 1.2, posmutesize = 0.2, juncmutesize = 1.2):
+    posmute  = [i for i in range(nodepos.shape[0]) if random.random()<posmuterate and nodepos.anchor[i] != 'T']
+    conmute  = [i for i in range(nodecon.shape[0]) if random.random()<conmuterate]
+    conkill  = [i for i in range(nodecon.shape[0]) if random.random()<conmuterate and i not in conmute]
+    killpair = [(nodecon.nodei[conn].item(), nodecon.nodej[conn].item()) for conn in conkill]
+    killlist = list(set(killpair + [(x[1], x[0]) for x in killpair]))
+    newpair  = [(i,j) for i in range(numnodes) for j in range(numnodes) if (i != j) and (np.random.rand() < conmuterate)]
+    
+    for node1 in posmute:
+    	nodepos.set_value(node1, 'px', nodepos.loc[node1,'px'].item() + (2*random.random() - 1)*posmutesize)
+    	nodepos.set_value(node1, 'py', nodepos.loc[node1,'py'].item() + (2*random.random() - 1)*posmutesize)
+    	nodepos.set_value(node1, 'pz', nodepos.loc[node1,'pz'].item() + (2*random.random() - 1)*posmutesize)
+    	
+    	#Identify all connections involving the mutated node.  Change the lengths accordingly.
+    	conframe1 = nodecon.loc[(nodecon.nodei == node1)]
+    	conframe2 = nodecon.loc[(nodecon.nodej == node1)]
+    	for i in conframe1.index:
+    	    node2 = conframe1.nodej[i].item()
+    	    conframe1.edgel[i] = np.sqrt((nodepos.px[node1] - nodepos.px[node2])**2 + \
+    	                                 (nodepos.py[node1] - nodepos.py[node2])**2 + \
+    	                                 (nodepos.pz[node1] - nodepos.pz[node2])**2)
+    	for i in conframe2.index:
+    	    node2 = conframe2.nodei[i].item()
+    	    conframe2.edgel[i] = np.sqrt((nodepos.px[node1] - nodepos.px[node2])**2 + \
+    	                                 (nodepos.py[node1] - nodepos.py[node2])**2 + \
+    	                                 (nodepos.pz[node1] - nodepos.pz[node2])**2)
+    
+    
+    for conn in conmute:
+        nodei, nodej = nodecon.loc[conn][['nodei', 'nodej']]
+        #print("Mutating connection between %d and %d"%(nodei, nodej))
+        #print(nodecon[(nodecon.nodei == nodei) & (nodecon.nodej == nodej)])
+        #print(nodecon[(nodecon.nodei == nodej) & (nodecon.nodej == nodei)])
+        if nodecon[(nodecon.nodei == nodej) & (nodecon.nodej == nodei)].shape[0] >0:
+            conj = nodecon[(nodecon.nodei == nodej) & (nodecon.nodej == nodei)].index[0]
+        else:
+            conj = nodecon.shape[0]
+            nodecon.append(pd.DataFrame([0,0,nodej, nodei]), ignore_index = True)
+        
+        nodecon.set_value(conn, 'edgek', nodecon.loc[conn,'edgek'].item() * conmutesize**(2*random.random()-1))
+        nodecon.set_value(conj, 'edgek', nodecon.loc[conn,'edgek'].item())
+    
+    for pair in killlist:
+        nodecon = nodecon[(nodecon.nodei != pair[0]) | (nodecon.nodej != pair[1])]
+    
+    meank = np.mean(nodecon.edgek)
+    
+    for pair in newpair:
+        if nodecon[(nodecon.nodei == pair[0]) & (nodecon.nodej == pair[1])].shape[0] == 0:
+            tempdist = np.sqrt((nodepos.px[pair[0]] - nodepos.px[pair[1]])**2 + \
+                               (nodepos.py[pair[0]] - nodepos.py[pair[1]])**2 + \
+                               (nodepos.pz[pair[0]] - nodepos.pz[pair[1]])**2)
+            nodecon.append(pd.DataFrame([[meank, tempdist, pair[0], pair[1]],
+                                         [meank, tempdist, pair[1], pair[0]]]), ignore_index = True)
+    
+    nodecon.reset_index(drop = True)
+    return nodecon, nodepos
 
 
 def stabilizeChildren(folder):
