@@ -692,6 +692,7 @@ void create_beams(){
 		file_start(readfolder);
 	}
 	*/
+
 	switch(flag) {
 		case 'b' :
 			breed_structure(readfolder1, readfolder2); 

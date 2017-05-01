@@ -1,0 +1,10 @@
+color based on compression vs tension
+epigenetics
+	update individuals based
+	
+improve physics realism
+support rods
+2 GPUS
+
+Readfile on junction constants.
+Python manipulate junction constants.

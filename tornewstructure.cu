@@ -1,7 +1,7 @@
 /*
 Joseph Brown
 
-nvcc tempnewstructure.cu -o temp -lglut -lm -lGLU -lGL -std=c++11
+nvcc tornewstructure.cu -o temp -lglut -lm -lGLU -lGL -std=c++11 -lcudart
 */
 
 #include <GL/glut.h>
@@ -14,11 +14,12 @@ nvcc tempnewstructure.cu -o temp -lglut -lm -lGLU -lGL -std=c++11
 #include <sys/stat.h>
 #include <random>
 #include <cstdio>
+#include <cuda.h>
 
 #define PI 3.141592654
 
 #define N 30
-#define PROB 0.5 
+#define PROB 0.2 
 #define MAXCONNECTIONS 20
 
 #define XWindowSize 600
@@ -98,7 +99,7 @@ int 	*juncpair1_CPU;
 int	*juncpair2_CPU;
 double	*juncangle_CPU;
 double	*junck_CPU;
-bool    *juncfail_CPU
+bool    *juncfail_CPU;
 
 int 	*juncpair1_GPU;
 int	*juncpair2_GPU;
@@ -139,7 +140,7 @@ void AllocateMemory(){
 	juncpair2_CPU = (int    *)malloc(numNodes_CPU * maxConns_CPU*maxConns_CPU * sizeof(int)   );
 	juncangle_CPU = (double *)malloc(numNodes_CPU * maxConns_CPU*maxConns_CPU * sizeof(double));
 	    junck_CPU = (double *)malloc(numNodes_CPU * maxConns_CPU*maxConns_CPU * sizeof(double));
-	 juncfail_CPU = (double *)malloc(numNodes_CPU * maxConns_CPU*maxConns_CPU * sizeof(bool  ));
+	 juncfail_CPU = (bool   *)malloc(numNodes_CPU * maxConns_CPU*maxConns_CPU * sizeof(bool  ));
 
 
 	cudaMalloc((void**)&numcon_GPU, numNodes_CPU* sizeof(int));
@@ -265,6 +266,7 @@ void random_start(){
 			}
 		}
 	}
+	/*
 	for(i = 0; i < numNodes_CPU; i++){
 		for(j = 0; j < numcon_CPU[i]; j++){
 			printf("nodes connected: %d, %d\n", i, beami_CPU[i*maxConns_CPU + j]);	
@@ -272,13 +274,14 @@ void random_start(){
 			printf("length:          %.3f\n\n", beaml_CPU[i*maxConns_CPU + j]);
 		}
 	}
+	*/
 	for(i = 0; i < numNodes_CPU; i++){
 		for(j = 0 ; j < numcon_CPU[i]; j++){
 			for(k = 0 ; k < numcon_CPU[i]; k++){
 				juncpair1_CPU[i*maxConns_CPU*maxConns_CPU + j*numcon_CPU[i] + k] = beami_CPU[i*maxConns_CPU + j];
 				juncpair2_CPU[i*maxConns_CPU*maxConns_CPU + j*numcon_CPU[i] + k] = beami_CPU[i*maxConns_CPU + k];
 				juncangle_CPU[i*maxConns_CPU*maxConns_CPU + j*numcon_CPU[i] + k] = rnd(PI);
-				    junck_CPU[i*maxConns_CPU*maxConns_CPU + j*numcon_CPU[i] + k] = rnd(30.0);
+				    junck_CPU[i*maxConns_CPU*maxConns_CPU + j*numcon_CPU[i] + k] = rnd(30.0) + 20;
 			}
 		}
 	}
@@ -296,17 +299,18 @@ void reset_numcon(int *numcon){
 }
 
 
-void file_start(char *foldername){
+void file_start(char *popfolder, char *foldername){
 
 	FILE *filecon;
-	int  i, j;
+	int  i, j, k;
 	char *filename;
-	char buf[1000];
+	char buf[3200];
 	char *pch;
 
-	double k_const, length;
+	double k_const, length, w_const, theta;
 
-	asprintf(&filename, "%s%s", foldername, "/nodecon.txt");
+	printf("foldername: %s/%s\n", popfolder, foldername);
+	asprintf(&filename, "%s/%s%s", popfolder, foldername, "/nodecon.txt");
 	
 	//printf("pass filename\n");
 	filecon = fopen(filename, "r");
@@ -428,7 +432,7 @@ void file_start(char *foldername){
 	
 	fclose(filecon);
 
-	asprintf(&filename, "%s%s", foldername, "/nodepos.txt");
+	asprintf(&filename, "%s/%s%s", popfolder, foldername, "/nodepos.txt");
 	filecon = fopen(filename, "r");
 
 		fgets(buf, 1000, filecon);
@@ -449,8 +453,95 @@ void file_start(char *foldername){
 			
 		}
 
-	fclose(filecon);	
-	//printf("File reading passed.\n");
+	fclose(filecon);
+
+	printf("Read positions and connections files.\n");
+	
+	asprintf(&filename, "%s/%s%s", popfolder, foldername, "/juncval.txt");
+	
+	/*
+	filecon = fopen(juncval, "w+");
+		fprintf(filecon, "defaultTheta\n");
+		for (i = 0; i < numNodes_CPU ; i++){
+			asprintf(&datarow, "");
+			for (j = 0; j < numcon_CPU[i]; j++){
+				for (k = 0; k < numcon_CPU[i]; k++){
+					asprintf(&datarow, "%s\t%.3f", datarow, 
+						 juncangle_CPU[i*maxConns_CPU*maxConns_CPU + j*numcon_CPU[i] + k]);
+				}
+			}
+			asprintf(&datarow, "%s\n", datarow);
+			fprintf(filecon, "%s", datarow);
+		}
+		
+		fprintf(filecon, "\nangleSpringConst\n");
+		for (i = 0; i < numNodes_CPU ; i++){
+			asprintf(&datarow, "");
+			for (j = 0; j < numcon_CPU[i]; j++){
+				for (k = 0; k < numcon_CPU[i]; k++){
+					asprintf(&datarow, "%s\t%.3f", datarow, 
+						 juncangle_CPU[i*maxConns_CPU*maxConns_CPU + j*numcon_CPU[i] + k]);
+				}
+			}
+			asprintf(&datarow, "%s\n", datarow);
+			fprintf(filecon, "%s", datarow);
+		}
+	fclose(filecon);
+	*/
+
+	filecon = fopen(filename, "r");
+
+		//printf("pass fileopen\n");
+		
+		fgets(buf, 3200, filecon);
+			//skip line
+		for (i = 0; i < numNodes_CPU; i++){
+		//	printf("row %d\n", i);
+			fgets(buf, 3200, filecon);
+			pch = strtok(buf, "\t");
+			j = 0;
+			k = 0;
+			while(pch != NULL){
+				
+				theta = strtof(pch, (char **)NULL);
+				juncangle_CPU[i*maxConns_CPU*maxConns_CPU + j*numcon_CPU[i] + k] = theta;
+				k++;
+				if(k = numcon_CPU[i]){
+					j++;
+					k = 0;
+				}
+				pch = strtok(NULL, "\t");
+			}
+			//printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
+		}
+
+
+		fgets(buf, 1000, filecon);
+		fgets(buf, 1000, filecon);
+			//Skip two lines
+		
+		for (i = 0; i < numNodes_CPU; i++){
+		//	printf("row %d\n", i);
+			fgets(buf, 3200, filecon);
+			pch = strtok(buf, "\t");
+			j = 0;
+			k = 0;
+			while(pch != NULL){
+				
+				w_const = strtof(pch, (char **)NULL);
+				junck_CPU[i*maxConns_CPU*maxConns_CPU + j*numcon_CPU[i] + k] = w_const;
+				k++;
+				if(k = numcon_CPU[i]){
+					j++;
+					k = 0;
+				}
+				pch = strtok(NULL, "\t");
+			}
+			//printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
+		}
+	fclose(filecon);
+
+	printf("File reading passed.\n");
 
 
 }
@@ -774,12 +865,12 @@ void create_beams(){
 			printf("Breeding structures completed.\n");
 			break;
 		case 's' :
-			file_start(readfolder1);
+			file_start(popfolder, readfolder1);
 			printf("File reading completed.\n");
 			break;
 		default  :
 			random_start(); 
-			printf("Random initializstion completed.\n");
+			printf("Random initialization completed.\n");
 	}
 	
 	/*
@@ -877,7 +968,7 @@ void set_initial_conditions()
 	deviceInit<<<1, 1>>>(numNodes_CPU, maxConns_CPU, dampening_CPU);
 }
 
-/*
+
 void displayText( float x, float y, float z, int r, int g, int b, const char *string ) {
 	int j = strlen( string );
  
@@ -887,7 +978,7 @@ void displayText( float x, float y, float z, int r, int g, int b, const char *st
 		glutBitmapCharacter( GLUT_BITMAP_TIMES_ROMAN_24, string[i] );
 	}
 }
-*/
+
 
 double fastest_cnxn(Connection *cnx){
 	int i;
@@ -902,7 +993,7 @@ double fastest_cnxn(Connection *cnx){
 	return(max_fastness);
 }
 
-/*
+
 void draw_picture()
 {
 	glClear(GL_COLOR_BUFFER_BIT);
@@ -962,7 +1053,7 @@ void draw_picture()
 	displayText( 1, -1.8, 0, 1.0, 1.0, 1.0, timestring);
 	displayText( 0.59, -1.9, 0, 1.0, 1.0, 1.0, fastnessstring);
 }
-*/
+
 
 double dot_prod(double x1, double y1, double z1, double x2, double y2, double z2){
 	return(x1*x2+y1*y2+z1*z2);
@@ -971,6 +1062,12 @@ double dot_prod(double x1, double y1, double z1, double x2, double y2, double z2
 __device__ double dev_dot_prod(double x1, double y1, double z1, double x2, double y2, double z2){
 	return(x1*x2+y1*y2+z1*z2);
 }
+
+__device__ double dev_get_angle(double x1, double y1, double z1, double x2, double y2, double z2){
+	return(acos(                 (x1*x2+y1*y2+z1*z2)/			//  acos(  u dot v  )
+		    (sqrt(x1*x1 + y1*y1 + z1*z1)*sqrt(x2*x2 + y2*y2 + z2*z2))));//      (  |u||v|   )
+}
+
 
 __global__ void setForces(Connection *cnx){
 	
@@ -1054,6 +1151,91 @@ __global__ void calcForces(Connection *cnx, int *numcon, int *beami, double *bea
 
 }// */
 
+__device__ double jAtomicAdd(double* address, double val) //NVIDIA patch for adding floats atomically.
+{
+    unsigned long long int* address_as_ull =
+                             (unsigned long long int*)address;
+    unsigned long long int old = *address_as_ull, assumed;
+    do {
+        assumed = old;
+old = atomicCAS(address_as_ull, assumed,
+                        __double_as_longlong(val +
+                               __longlong_as_double(assumed)));
+    } while (assumed != old);
+    return __longlong_as_double(old);
+}
+
+__global__ void calcForces_Torque(Connection *cnx, int *numcon, int *beami, double *juncangle_GPU, double *junck_GPU){
+	//A terrible diagram of this process exists in the git repository folder under the name 'torqueDiagram.png'
+	
+	int i = threadIdx.x + blockDim.x*blockIdx.x;
+	int j = blockIdx.y;  //should be capped out at maxconns - 1
+	int k = blockIdx.z;  //should be capped out at maxconns - 1
+	int M = maxConns_GPU;
+	
+	if(i < numNodes_GPU){
+		if((j < numcon[i]) && (k < numcon[i]) && (j != k)){
+
+			/*
+				For the triple, a, b, c, where b is in the center,
+					calculate the torque on a and c with the appropriate dot product
+						calculations and the angular Hooke's Law.
+					calculate the force on b by negating the sum of the forces on a and c.
+
+			*/
+
+			Connection A = cnx[i];
+			Connection B = cnx[beami[i*M + j]];
+			Connection C = cnx[beami[i*M + k]];
+		
+			double lAB, lAC, lBC, dtheta, torque;
+			double dpx_AB, dpy_AB, dpz_AB;
+			double dpx_AC, dpy_AC, dpz_AC;
+			double dpx_BC, dpy_BC, dpz_BC;
+			/*
+			double dvx_AB, dvy_AB, dvz_AB;
+			double dvx_AC, dvy_AC, dvz_AC;
+			double dvx_BC, dvy_BC, dvz_BC; //Want to calculate relative angular velocity in the plane.
+			*/
+			double dirx, diry, dirz;
+			double planedot, normAB, normAC, normABorthAC;
+			
+			dpx_AB = A.px - B.px;  dpy_AB = A.py - B.py;  dpz_AB = A.pz - B.pz;
+			dpx_AC = A.px - C.px;  dpy_AC = A.py - C.py;  dpz_AC = A.pz - C.pz;
+			dpx_BC = B.px - C.px;  dpy_BC = B.py - C.py;  dpz_BC = B.pz - C.pz;
+			
+			planedot = dev_dot_prod(dpx_AB, dpy_AB, dpz_AB, dpx_AC, dpy_AC, dpz_AC);
+			normAB   = dev_dot_prod(dpx_AB, dpy_AB, dpz_AB, dpx_AB, dpy_AB, dpz_AB);
+			normAC   = dev_dot_prod(dpx_AC, dpy_AC, dpz_AC, dpx_AC, dpy_AC, dpz_AC);
+			lAC      = sqrt(normAC);
+
+			dtheta = juncangle_GPU[i*M*M + j*numcon[i] + k] - acos(planedot/(sqrt(normAB)*sqrt(normAC)));
+			torque =     junck_GPU[i*M*M + j*numcon[i] + k] * dtheta; //-dampening*angularv
+			
+
+			dirx = dpx_AB - dpx_AC*planedot/normAC;
+			diry = dpy_AB - dpy_AC*planedot/normAC;
+			dirz = dpz_AB - dpz_AC*planedot/normAC;
+
+			normABorthAC = dev_dot_prod(dirx, diry, dirz, dirx, diry, dirz);
+			
+			dirx = dirx/sqrt(normABorthAC);
+			diry = diry/sqrt(normABorthAC);
+			dirz = dirz/sqrt(normABorthAC);
+
+			jAtomicAdd(&cnx[i].fx, -dirx*torque/lAC);
+			jAtomicAdd(&cnx[i].fy, -diry*torque/lAC);
+			jAtomicAdd(&cnx[i].fz, -dirz*torque/lAC);
+			
+			jAtomicAdd(&cnx[beami[i*M + k]].fx, dirx*torque/lAC);
+			jAtomicAdd(&cnx[beami[i*M + k]].fy, diry*torque/lAC);
+			jAtomicAdd(&cnx[beami[i*M + k]].fz, dirz*torque/lAC);
+
+		}
+	}
+}// */
+
+
 __global__ void calcVP(Connection *cnx) {
 
 	int i = threadIdx.x + blockDim.x*blockIdx.x;
@@ -1105,6 +1287,126 @@ double goodness(){
 	}
 }
 
+void writeFiles(){
+	int result = -1;
+	int trial = 0;
+	int i, j, k;
+	char* filetry;
+	//printf("preloop1\n");
+	while (result == -1){
+		trial += 1;
+		asprintf(&filetry, "%s/trial%d", popfolder, trial);
+		result = mkdir(filetry, ACCESSPERMS);
+		//printf("trying %d\n", trial);
+		//printf("result %d\n", result);
+		//printf(filetry);
+ 	}
+	printf("Writing trial%d...\n", trial);
+	//printf("passloop1\n");
+	char* nodepos; 
+	char* nodecon;
+	char* juncval;
+	char* popsumm;
+	char* datarow;
+	//char datarow[30];
+
+	asprintf(&nodepos, "%s/nodepos.txt", filetry);
+	asprintf(&nodecon, "%s/nodecon.txt", filetry);
+	asprintf(&juncval, "%s/juncval.txt", filetry);
+	asprintf(&popsumm, "%s/summary.txt", popfolder);
+
+	FILE *filecon;
+
+	filecon = fopen(nodepos, "w+");
+		fprintf(filecon, "px\tpy\tpz\tanchor\n");
+		for (i = 0; i < numNodes_CPU ; i++){
+			fprintf(filecon, "%2.3f\t%2.3f\t%2.3f\t%s\n", 
+					 cnx_CPU[i].px, cnx_CPU[i].py, cnx_CPU[i].pz, cnx_CPU[i].anchor ? "T" : "F" );
+		}
+	fclose(filecon);
+
+	filecon = fopen(nodecon, "w+");
+		fprintf(filecon, "Nodes: %d\nMax Connections: %d\n\n", numNodes_CPU, maxConns_CPU);
+		fprintf(filecon, "beami\n");
+		for (i = 0; i < numNodes_CPU ; i++){
+			asprintf(&datarow, "");
+			for (j = 0; j < numcon_CPU[i]; j++){
+				asprintf(&datarow, "%s\t%d", datarow, beami_CPU[maxConns_CPU*i + j]);
+			}
+			asprintf(&datarow, "%s\n", datarow);
+			fprintf(filecon, "%s", datarow);
+		}
+
+		fprintf(filecon, "\nbeamk\n");
+		for (i = 0; i < numNodes_CPU ; i++){
+			asprintf(&datarow, "");
+			for (j = 0; j < numcon_CPU[i]; j++){
+				asprintf(&datarow, "%s\t%.3f", datarow, beamk_CPU[maxConns_CPU*i + j]);
+			}
+			asprintf(&datarow, "%s\n", datarow);
+			fprintf(filecon, "%s", datarow);
+		}
+
+		fprintf(filecon, "\nbeaml\n");
+		for (i = 0; i < numNodes_CPU ; i++){
+			asprintf(&datarow, "");
+			for (j = 0; j < numcon_CPU[i]; j++){
+				asprintf(&datarow, "%s\t%.3f", datarow, beaml_CPU[maxConns_CPU*i + j]);
+			}
+			asprintf(&datarow, "%s\n", datarow);
+			fprintf(filecon, "%s", datarow);
+		}
+
+		fprintf(filecon, "\nfail\n");
+		for (i = 0; i < numNodes_CPU ; i++){
+			asprintf(&datarow, "");
+			for (j = 0; j < numcon_CPU[i]; j++){
+				asprintf(&datarow, "%s\t%s", datarow, fail_CPU[maxConns_CPU*i + j] ? "T" : "F");
+			}
+			asprintf(&datarow, "%s\n", datarow);
+			fprintf(filecon, "%s", datarow);
+		}
+
+	fclose(filecon);
+
+	filecon = fopen(juncval, "w+");
+		fprintf(filecon, "defaultTheta\n");
+		for (i = 0; i < numNodes_CPU ; i++){
+			asprintf(&datarow, "");
+			for (j = 0; j < numcon_CPU[i]; j++){
+				for (k = 0; k < numcon_CPU[i]; k++){
+					asprintf(&datarow, "%s\t%.3f", datarow, 
+						 juncangle_CPU[i*maxConns_CPU*maxConns_CPU + j*numcon_CPU[i] + k]);
+				}
+			}
+			asprintf(&datarow, "%s\n", datarow);
+			fprintf(filecon, "%s", datarow);
+		}
+		
+		fprintf(filecon, "\nangleSpringConst\n");
+		for (i = 0; i < numNodes_CPU ; i++){
+			asprintf(&datarow, "");
+			for (j = 0; j < numcon_CPU[i]; j++){
+				for (k = 0; k < numcon_CPU[i]; k++){
+					asprintf(&datarow, "%s\t%.3f", datarow, 
+						 junck_CPU[i*maxConns_CPU*maxConns_CPU + j*numcon_CPU[i] + k]);
+				}
+			}
+			asprintf(&datarow, "%s\n", datarow);
+			fprintf(filecon, "%s", datarow);
+		}
+	fclose(filecon);
+
+	filecon = fopen(popsumm, "a");
+		fprintf(filecon, "trial%d\t%.5f\n", trial, goodness());
+	fclose(filecon);
+
+	printf("written.\n");
+ 	written = true;
+	isRunning = false;
+
+}
+
 void update(int value){
 
 
@@ -1119,108 +1421,22 @@ void update(int value){
 		cudaMemcpy( cnx_CPU,  cnx_GPU, numNodes_CPU*sizeof(Connection),                cudaMemcpyDeviceToHost);
 		cudaMemcpy(fail_CPU, fail_GPU, maxConns_CPU*numNodes_CPU*sizeof(bool),       cudaMemcpyDeviceToHost);
 	
-		//glutPostRedisplay();
-		//glutTimerFunc(1, update, 0);
+		glutPostRedisplay();
+		glutTimerFunc(1, update, 0);
 		//printf("cnx[9] velocity: %.3f\n", cnx_CPU[9].vy);
 		timerunning += DT;
 	}
 	else{		
 		if (fastest_cnxn(cnx_CPU) < MAXVEL){
 			if(!written){
-
-				int result = -1;
-				int trial = 0;
-				int i, j;
-				char* filetry;
-				//printf("preloop1\n");
-				while (result == -1){
-					trial += 1;
-					asprintf(&filetry, "%s/trial%d", popfolder, trial);
-					result = mkdir(filetry, ACCESSPERMS);
-					//printf("trying %d\n", trial);
-					//printf("result %d\n", result);
-					//printf(filetry);
- 				}
-				printf("Writing trial%d...\n", trial);
-				//printf("passloop1\n");
-				char* nodepos; 
-				char* nodecon;
-				char* popsumm;
-				char* datarow;
-				//char datarow[30];
-
-				asprintf(&nodepos, "%s/nodepos.txt", filetry);
-				asprintf(&nodecon, "%s/nodecon.txt", filetry);
-				asprintf(&popsumm, "%s/summary.txt", popfolder);
-
-				FILE *filecon;
-
-				filecon = fopen(nodepos, "w+");
-					fprintf(filecon, "px\tpy\tpz\tanchor\n");
-					for (i = 0; i < numNodes_CPU ; i++){
-						fprintf(filecon, "%2.3f\t%2.3f\t%2.3f\t%s\n", 
-								 cnx_CPU[i].px, cnx_CPU[i].py, cnx_CPU[i].pz, cnx_CPU[i].anchor ? "T" : "F" );
-					}
-				fclose(filecon);
-
-				filecon = fopen(nodecon, "w+");
-					fprintf(filecon, "Nodes: %d\nMax Connections: %d\n\n", numNodes_CPU, maxConns_CPU);
-					fprintf(filecon, "beami\n");
-					for (i = 0; i < numNodes_CPU ; i++){
-						asprintf(&datarow, "");
-						for (j = 0; j < numcon_CPU[i]; j++){
-							asprintf(&datarow, "%s\t%d", datarow, beami_CPU[maxConns_CPU*i + j]);
-						}
-						asprintf(&datarow, "%s\n", datarow);
-						fprintf(filecon, "%s", datarow);
-					}
-
-					fprintf(filecon, "\nbeamk\n");
-					for (i = 0; i < numNodes_CPU ; i++){
-						asprintf(&datarow, "");
-						for (j = 0; j < numcon_CPU[i]; j++){
-							asprintf(&datarow, "%s\t%.3f", datarow, beamk_CPU[maxConns_CPU*i + j]);
-						}
-						asprintf(&datarow, "%s\n", datarow);
-						fprintf(filecon, "%s", datarow);
-					}
-
-					fprintf(filecon, "\nbeaml\n");
-					for (i = 0; i < numNodes_CPU ; i++){
-						asprintf(&datarow, "");
-						for (j = 0; j < numcon_CPU[i]; j++){
-							asprintf(&datarow, "%s\t%.3f", datarow, beaml_CPU[maxConns_CPU*i + j]);
-						}
-						asprintf(&datarow, "%s\n", datarow);
-						fprintf(filecon, "%s", datarow);
-					}
-
-					fprintf(filecon, "\nfail\n");
-					for (i = 0; i < numNodes_CPU ; i++){
-						asprintf(&datarow, "");
-						for (j = 0; j < numcon_CPU[i]; j++){
-							asprintf(&datarow, "%s\t%s", datarow, fail_CPU[maxConns_CPU*i + j] ? "T" : "F");
-						}
-						asprintf(&datarow, "%s\n", datarow);
-						fprintf(filecon, "%s", datarow);
-					}
-
-				fclose(filecon);
-
-				filecon = fopen(popsumm, "a");
-					fprintf(filecon, "trial%d\t%.5f\n", trial, goodness());
-				fclose(filecon);
-
-				printf("written.\n");
- 				written = true;
-				isRunning = false;
+				writeFiles();
 			}
 		} else if (attempt < MAXTRIES){
 			attempt += 1;
 			timerunning = 0;
 			//printf("Attempt %d/%d with timestep %.2f.\n", attempt, MAXTRIES, STOP_TIME);
 
-		//	glutTimerFunc(1, update, 0);
+			glutTimerFunc(1, update, 0);
 		} else {
 			isRunning = false;
 			printf("\nUnstable.\nCurrent velocity: %.3f\nMax velocity: %.3f\n\n", fastest_cnxn(cnx_CPU), MAXVEL);
@@ -1228,7 +1444,7 @@ void update(int value){
 	}
 }
 
-/*
+
 void Display(void)
 {
 	//gluLookAt(0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
@@ -1251,7 +1467,7 @@ void reshape(int w, int h)
 
 	glMatrixMode(GL_MODELVIEW);
 }
-*/
+
 
 void mainLoop(){
 
@@ -1265,7 +1481,9 @@ int main(int argc, char *argv[])
 	readfolder1 = (char *)malloc( 1000* sizeof(char));
 	readfolder2 = (char *)malloc( 1000* sizeof(char));
 	popfolder   = (char *)malloc( 1000* sizeof(char));
-	if(argc == 1){
+	if(argc == 1){	
+		asprintf(&popfolder,   "stablestructs1");
+
 		flag = 'X';
 	} else if(argc == 2){
 		asprintf(&popfolder,   "%s", argv[1]);
@@ -1285,7 +1503,10 @@ int main(int argc, char *argv[])
 	} else {
 		return(1);
 	}
-	/*
+
+	printf("readfolder1: %s\n", readfolder1);
+	printf("popfolder: %s\n", popfolder);
+	
 	glutInit(&argc,argv);
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_DEPTH | GLUT_RGB);
 	glutInitWindowSize(XWindowSize,YWindowSize);
@@ -1312,17 +1533,17 @@ int main(int argc, char *argv[])
 	glEnable(GL_LIGHT0);
 	glEnable(GL_COLOR_MATERIAL);
 	glEnable(GL_DEPTH_TEST);
-	*/
+	
 	set_initial_conditions();
-	/*
+	
 	gluLookAt(0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
 	glutDisplayFunc(Display);
 	glutTimerFunc(1, update, 0);
 	glutReshapeFunc(reshape);
 	
 	glutMainLoop();
-	*/
-	mainLoop();
+	
+	//mainLoop();
 	CleanUp();
 	return 0;
 }
