@@ -45,7 +45,7 @@ using namespace std;
 // Globals
 double G_const, H_const, p_const, q_const, k_const, k_anchor, rod_proportion, timerunning, dampening_CPU;
 
-int numblocks, blocksize, attempt, numNodes_CPU, maxConns_CPU;
+int numblocks, blocksize, attempt, numNodes_CPU, maxConns_CPU, numAngles_CPU;
 
 struct stat st = {0};
 
@@ -93,6 +93,16 @@ int	*beami_GPU;
 double	*beamk_GPU;
 double	*beaml_GPU;
 bool	*fail_GPU;
+
+int 	*juncpair1_CPU;
+int	*juncpair2_CPU;
+double	*juncangle_CPU;
+double	*junck_CPU;
+
+int 	*juncpair1_GPU;
+int	*juncpair2_GPU;
+double	*juncangle_GPU;
+double	*junck_GPU;
 
 char timestring[16] ;
 char fastnessstring[18] ;	

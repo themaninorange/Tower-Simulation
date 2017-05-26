@@ -1,7 +1,7 @@
 /*
 Joseph Brown
 
-nvcc newstructure.cu -o temp -lglut -lm -lGLU -lGL -std=c++11
+nvcc tempnewstructure.cu -o temp -lglut -lm -lGLU -lGL -std=c++11
 */
 
 #include <GL/glut.h>
@@ -13,6 +13,7 @@ nvcc newstructure.cu -o temp -lglut -lm -lGLU -lGL -std=c++11
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <random>
+#include <cstdio>
 
 #define PI 3.141592654
 
@@ -25,7 +26,7 @@ nvcc newstructure.cu -o temp -lglut -lm -lGLU -lGL -std=c++11
 
 #define STOP_TIME 1.0
 #define DT        0.005
-#define MAXTRIES  50
+#define MAXTRIES  200
 #define MAXVEL	  0.1
 
 #define GRAVITY 0.1 
@@ -44,17 +45,36 @@ using namespace std;
 // Globals
 double G_const, H_const, p_const, q_const, k_const, k_anchor, rod_proportion, timerunning, dampening_CPU;
 
-int numblocks, blocksize, attempt, numNodes_CPU, maxConns_CPU;
+int numblocks, blocksize, attempt, numNodes_CPU, maxConns_CPU, numAngles_CPU;
 
 struct stat st = {0};
 
-struct Connection {
+class Connection {
+	public:
 	double px, py, pz;	//Position
 	double vx, vy, vz;	//Velocity
 	double fx, fy, fz;	//Net force
 	double mass, radius;
 	bool anchor;		//Establishes whether each node can move
+	
+	Connection(){
+		px = 0; py = 0; pz = 0;
+		vx = 0; vy = 0; vz = 0;
+		fx = 0; fy = 0; fz = 0;
+		mass = 0;
+		radius = 0;
+		anchor = false;
+	}
 
+	Connection& operator=(Connection other){
+		px = other.px; py = other.py; pz = other.pz;
+		vx = other.vx; vy = other.vy; vz = other.vz;
+		fx = other.fx; fy = other.fy; fz = other.fz;
+		mass = other.mass;
+		radius = other.radius;
+		anchor = other.anchor;
+		return *this;
+	}
 };
 
 Connection *cnx_CPU, *cnx_GPU;
@@ -74,50 +94,39 @@ double	*beamk_GPU;
 double	*beaml_GPU;
 bool	*fail_GPU;
 
+int 	*juncpair1_CPU;
+int	*juncpair2_CPU;
+double	*juncangle_CPU;
+double	*junck_CPU;
+
+int 	*juncpair1_GPU;
+int	*juncpair2_GPU;
+double	*juncangle_GPU;
+double	*junck_GPU;
+
 char timestring[16] ;
 char fastnessstring[18] ;	
 
 //char readfolder[1000] = "stablestructs1/trial2";
+//char readfolder[1000] = "";
 char *popfolder;
-char readfolder[1000] = "";
+char *readfolder1;
+char *readfolder2;
+
+char flag;
 
 bool written   = false;
 bool isRunning = true;
 
-/*
-EXAMPLE:
-
-If conn_index[0] is zero, and conn_index[1] is 6, this means that i_conns entries 0 through 5 will be 
-	connections to node zero.  If conn_index[2] is 9, then i_conns entries 6 through 8 will be
-	connections to node one.
-
-i_conns will then have length equal to the total number of edges, and its entries will be which nodes
-	are connected to the node associated with that index range.  If i_conns[0] through i_conns[9] are
-		 1,   2,   5,   6,   7,   10,  0,   2,   5,          ...
-		|    connected to node 0     | connected to node 1 | ...
-	we can loop through i_conns[6] through i_conns[8] to find the connections for node 1.
-
-i_kconst will have the same structure as i_conns, but the entries will be the spring constants associated with
-	the connections in i_conns.  If i_kconst[0] through i_kconst[9] are
-		 3.5, 5.5, 10,  4,   0.5, 12.1,7.2, 17,  3.2	     ...
-		| ^  |					| ^  |
-		  |					  |	
-		  |					Value of spring constant for connection between 1 and 5.
-		Value of spring constant for connection between 0 and 1.
-
-i_lengths will also have information about connections, like i_kconst, but the entries will be the lengths of the springs.
-*/
-
-
 void AllocateMemory(){
 
 	printf("Allocating mem with\nnumNodes_CPU: %d\nmaxConns_CPU: %d\n", numNodes_CPU, maxConns_CPU);
-	printf("passA1\n");
+	//printf("passA1\n");
 	cnx_CPU = (Connection*)malloc( sizeof(Connection) * numNodes_CPU);
 	cudaMalloc((void**)&cnx_GPU, sizeof(Connection) * numNodes_CPU);
 
 	numcon_CPU  = (int *)malloc(numNodes_CPU*sizeof(int));
-	printf("passA2\n");
+	//printf("passA2\n");
 
 	beami_CPU = (int    *)malloc(numNodes_CPU * maxConns_CPU * sizeof(int)   );
         beamk_CPU = (double *)malloc(numNodes_CPU * maxConns_CPU * sizeof(double));
@@ -130,31 +139,31 @@ void AllocateMemory(){
         cudaMalloc((void**)&beami_GPU, numNodes_CPU * maxConns_CPU * sizeof(int)   );
         cudaMalloc((void**)&beamk_GPU, numNodes_CPU * maxConns_CPU * sizeof(double));
         cudaMalloc((void**)&beaml_GPU, numNodes_CPU * maxConns_CPU * sizeof(double));
-        cudaMalloc((void**)&fail_GPU,  numNodes_CPU * maxConns_CPU * sizeof(bool)  );
+        cudaMalloc((void**)& fail_GPU, numNodes_CPU * maxConns_CPU * sizeof(bool)  );
 
-	printf("passA3\n");
+	//printf("passA3\n");
 
 }
 
-CleanUp(){
-
-	printf("Freeing CPU Memory.\n");
-	free(numcon_CPU);
-	free(beami_CPU );
-	free(beamk_CPU );
-	free(beaml_CPU );
-	free(fail_CPU  );
-
-	printf("Freeing GPU Memory.\n");
-	cudaFree(numcon_GPU);
-	cudaFree(beami_GPU );
-	cudaFree(beamk_GPU );
-	cudaFree(beaml_GPU );
-	cudaFree(fail_GPU  );
+void CleanUp(){
 	
+	printf("Freeing CPU memory.\n");
+	free(cnx_CPU);
+	free(beami_CPU  ) ;
+        free(beamk_CPU  ) ;
+        free(beaml_CPU  ) ;
+        free(fail_CPU   ) ;
+	free(numcon_CPU ) ;
+
+	printf("Freeing GPU memory.\n");
+	cudaFree(cnx_GPU);
+	cudaFree(beami_GPU  ) ;
+        cudaFree(beamk_GPU  ) ;
+        cudaFree(beaml_GPU  ) ;
+        cudaFree(fail_GPU   ) ;
+
 	printf("Memory Freed.\n");
 }
-
 
 void random_start(){
 
@@ -174,7 +183,7 @@ void random_start(){
 		cnx_CPU[i].vx = 0;
 		cnx_CPU[i].vy = 0;
 		cnx_CPU[i].vz = 0;
-	}// */	//Initialize sphere velocities to zero
+	}// 	//Initialize sphere velocities to zero
 
 	for(i = 0; i < 6; i++){
 		cnx_CPU[i].px = sin(i+1);
@@ -230,23 +239,22 @@ void random_start(){
 			}
 		}
 	}
-	/*for(i = 0; i < numNodes_CPU; i++){
+	for(i = 0; i < numNodes_CPU; i++){
 		for(j = 0; j < numcon_CPU[i]; j++){
 			printf("nodes connected: %d, %d\n", i, beami_CPU[i*maxConns_CPU + j]);	
 			printf("constant:        %.3f\n", beamk_CPU[i*maxConns_CPU + j]);
 			printf("length:          %.3f\n\n", beaml_CPU[i*maxConns_CPU + j]);
 		}
-	}*/
+	}
 }// */
 
-/*
-void reset_numcon(){
+void reset_numcon(int *numcon){
 	int i;
 
-	printf("\nRESETTING NUMCON\n");
+	//printf("\nRESETTING NUMCON\n");
 	for(i = 0; i < numNodes_CPU; i++){
-		numcon_CPU[i] = 0;
-		printf("numcon[%3d]: %3d\n", i , numcon_CPU[i]);
+		numcon[i] = 0;
+		//printf("numcon[%3d]: %3d\n", i , numcon[i]);
 	}
 }
 
@@ -254,7 +262,7 @@ void reset_numcon(){
 void file_start(char *foldername){
 
 	FILE *filecon;
-	int i, j;
+	int  i, j;
 	char *filename;
 	char buf[1000];
 	char *pch;
@@ -263,10 +271,10 @@ void file_start(char *foldername){
 
 	asprintf(&filename, "%s%s", foldername, "/nodecon.txt");
 	
-	printf("pass filename\n");
+	//printf("pass filename\n");
 	filecon = fopen(filename, "r");
 
-		printf("pass fileopen\n");
+		//printf("pass fileopen\n");
 
 		fgets(buf, 1000, filecon);
 		numNodes_CPU = (int) strtol(&buf[6], (char **)NULL, 10);
@@ -282,9 +290,9 @@ void file_start(char *foldername){
 		fgets(buf, 1000, filecon);
 			//Skip two lines
 
-		reset_numcon();
+		reset_numcon(numcon_CPU);
 	
-		printf("\nbeami values\n");
+		//printf("\nbeami values\n");
 		for (i = 0; i < numNodes_CPU; i++){
 					
 			fgets(buf, 1000, filecon);
@@ -298,16 +306,16 @@ void file_start(char *foldername){
 					//Reads the next token
 			//	printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
 			}
-			printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
+			//printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
 		}
 
 		fgets(buf, 1000, filecon);
 		fgets(buf, 1000, filecon);
 			//Skip two lines
 		
-		reset_numcon();
+		reset_numcon(numcon_CPU);
 
-		printf("\nbeamk values\n");
+		//printf("\nbeamk values\n");
 
 		for (i = 0; i < numNodes_CPU; i++){
 
@@ -320,7 +328,7 @@ void file_start(char *foldername){
 				numcon_CPU[i] += 1;	
 				pch = strtok(NULL, "\t");
 			}
-			printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
+			//printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
 
 
 		}
@@ -330,9 +338,38 @@ void file_start(char *foldername){
 		fgets(buf, 1000, filecon);
 			//Skip two lines
 		
-		reset_numcon();
+		reset_numcon(numcon_CPU);
 
-		printf("\nbeaml values\n");
+		//printf("\nbeaml values\n");
+
+		for (i = 0; i < numNodes_CPU; i++){
+
+		//	printf("row %d\n", i);
+			fgets(buf, 1000, filecon);
+			pch = strtok(buf, "\t");
+			while(pch != NULL){
+				
+				length = strtof(pch, (char **)NULL);
+				beaml_CPU[i*maxConns_CPU + numcon_CPU[i]] = length;
+				numcon_CPU[i] += 1;	
+				pch = strtok(NULL, "\t");
+					//Reads the next token
+				//printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
+			}
+			//printf("numcon_CPU[%d]: %d\n", i, numcon_CPU[i]);
+		}
+		
+		// if the next block exists, it should be gene cluster flags.
+		// I want to keep the rest of this to copy to the end of the file I create later.
+		// To be implemented later
+		/*
+		fgets(buf, 1000, filecon);
+		fgets(buf, 1000, filecon);
+			//Skip two lines
+		
+		reset_numcon(numcon_CPU);
+
+		printf("\ngene cluster values\n");
 
 		for (i = 0; i < numNodes_CPU; i++){
 
@@ -350,6 +387,7 @@ void file_start(char *foldername){
 			}
 			printf("numcon_CPU[%d]: %d\n", i, numcon_CPU[i]);
 		}
+		*/
 	
 	fclose(filecon);
 
@@ -370,37 +408,352 @@ void file_start(char *foldername){
 			cnx_CPU[i].pz = strtof(pch, (char **)NULL);
 
 			pch = strtok(NULL, "\t");
-			cnx_CPU[i].anchor = (pch[0]==0["T"]); //pointer sorcery
-			cnx_CPU[i].anchor = (pch[0]=="T"[0]); //pointer sorcery
+			cnx_CPU[i].anchor = ( pch[0] == 0["T"] ); //pointer sorcery
 			
 		}
 
 	fclose(filecon);	
-	printf("File reading passed.\n");
+	//printf("File reading passed.\n");
 
 
 }
-*/
+
+
+void breed_structure(char *folder1, char *folder2){
+
+	Connection *cnx_1, *cnx_2;
+
+	int	*numcon_1, *numcon_2;
+
+	int	*beami_1,  *beami_2;
+	double	*beamk_1,  *beamk_2;
+	double	*beaml_1,  *beaml_2;
+ 
+	FILE *filecon;
+	int  i, j, temp1, temp2;
+	char *filename;
+	char buf[1000];
+	char *pch;
+
+	double k_const, length;
+
+	
+	
+	
+	printf("%d\n", 319);
+	//OPEN FOLDER 1
+	asprintf(&filename, "%s/%s%s", popfolder, folder1, "/nodecon.txt");
+	
+	//printf("pass filename folder 1\n");
+	filecon = fopen(filename, "r");
+
+		printf("pass fileopen folder 1\n");
+		printf("%d\n", 319);
+		fgets(buf, 1000, filecon);
+		numNodes_CPU = (int) strtol(&buf[6], (char **)NULL, 10);
+			//Nodes: [numNodes]
+
+		fgets(buf, 1000, filecon);
+		maxConns_CPU = (int) strtol(&buf[16], (char **)NULL, 10);
+			//Max Connections: [maxConns]
+	
+		AllocateMemory();
+
+		printf("Allocating temp mem with\nnumNodes_CPU: %d\nmaxConns_CPU: %d\n", numNodes_CPU, maxConns_CPU);
+		printf("passTA1\n");
+		cnx_1 = (Connection*)malloc( sizeof(Connection) * numNodes_CPU);
+
+		numcon_1  = (int *)malloc(numNodes_CPU*sizeof(int));
+
+		beami_1 = (int    *)malloc(numNodes_CPU * maxConns_CPU * sizeof(int)   );
+		beamk_1 = (double *)malloc(numNodes_CPU * maxConns_CPU * sizeof(double));
+		beaml_1 = (double *)malloc(numNodes_CPU * maxConns_CPU * sizeof(double));
+
+		cnx_2 = (Connection*)malloc( sizeof(Connection) * numNodes_CPU);
+
+		numcon_2  = (int *)malloc(numNodes_CPU*sizeof(int));
+
+		beami_2 = (int    *)malloc(numNodes_CPU * maxConns_CPU * sizeof(int)   );
+		beamk_2 = (double *)malloc(numNodes_CPU * maxConns_CPU * sizeof(double));
+		beaml_2 = (double *)malloc(numNodes_CPU * maxConns_CPU * sizeof(double));
+
+		printf("passTA3\n");
+
+		fgets(buf, 1000, filecon);
+		fgets(buf, 1000, filecon);
+			//Skip two lines
+
+		reset_numcon(numcon_1);
+	
+		//printf("\nbeami values file 1\n");
+		for (i = 0; i < numNodes_CPU; i++){
+			//printf("row: %d\n", i);	
+			fgets(buf, 1000, filecon);
+			pch = strtok(buf, "\t");
+			while(pch != NULL){
+				
+				j = strtol(pch, (char **)NULL, 10);
+				beami_1[i*maxConns_CPU + numcon_1[i]] = j;
+				numcon_1[i] += 1;	
+				pch = strtok(NULL, "\t");
+					//Reads the next token
+			//	printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
+			}
+			//printf("number of connections to %3d: %3d\n", i, numcon_1[i]);
+		}
+
+		fgets(buf, 1000, filecon);
+		fgets(buf, 1000, filecon);
+			//Skip two lines
+		
+		reset_numcon(numcon_1);
+
+		//printf("\nbeamk values file 1\n");
+	
+
+			
+		for(int newthing = 0; newthing < numNodes_CPU; newthing++){
+			
+			//printf("row without i?\n");
+			//fflush(stdout);
+			//printf("%d\n", 319);
+			//printf("whyyyyyy\n");
+			//fflush(stdout);
+			//printf("row %f\n",(float)newthing);
+			//fflush(stdout);
+			fgets(buf, 1000, filecon);
+			pch = strtok(buf, "\t");
+			while(pch != NULL){
+				k_const = strtof(pch, (char **)NULL);
+				beamk_1[newthing*maxConns_CPU + numcon_1[newthing]] = k_const;
+				numcon_1[newthing] += 1;	
+				pch = strtok(NULL, "\t");
+			}
+			//printf("number of connections to %3d: %3d\n", newthing, numcon_CPU[i]);
+		}
+
+
+		fgets(buf, 1000, filecon);
+		fgets(buf, 1000, filecon);
+			//Skip two lines
+		
+		reset_numcon(numcon_1);
+
+		//printf("\nbeaml values file 1\n");
+
+		for (i = 0; i < numNodes_CPU; i++){
+
+		//	printf("row %d\n", i);
+			fgets(buf, 1000, filecon);
+			pch = strtok(buf, "\t");
+			while(pch != NULL){
+				
+				length = strtof(pch, (char **)NULL);
+				beaml_1[i*maxConns_CPU + numcon_1[i]] = length;
+				numcon_1[i] += 1;	
+				pch = strtok(NULL, "\t");
+					//Reads the next token
+				//printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
+			}
+			//printf("numcon_CPU[%d]: %d\n", i, numcon_CPU[i]);
+		}
+	
+	fclose(filecon);	
+
+	asprintf(&filename, "%s/%s%s", popfolder, folder1, "/nodepos.txt");
+	filecon = fopen(filename, "r");
+
+		fgets(buf, 1000, filecon);
+			//Skip line
+		for (i = 0; i < numNodes_CPU; i++){
+					
+			fgets(buf, 1000, filecon);
+
+			pch = strtok(buf, "\t");
+			cnx_1[i].px = strtof(pch, (char **)NULL);
+			pch = strtok(NULL, "\t");
+			cnx_1[i].py = strtof(pch, (char **)NULL);
+			pch = strtok(NULL, "\t");
+			cnx_1[i].pz = strtof(pch, (char **)NULL);
+
+			pch = strtok(NULL, "\t");
+			cnx_1[i].anchor = (pch[0]==0["T"]); //pointer sorcery
+			
+		}
+
+	fclose(filecon);	
+	printf("Folder 1 reading passed.\n");
+	// END FOLDER 1
+	
+	
+	// OPEN FOLDER 2
+	asprintf(&filename, "%s/%s%s", popfolder, folder2, "/nodecon.txt");
+	
+	filecon = fopen(filename, "r");
+
+		printf("pass fileopen folder 2\n");
+
+		fgets(buf, 1000, filecon);
+		temp1 = (int) strtol(&buf[6], (char **)NULL, 10);
+		fgets(buf, 1000, filecon);
+		temp2 = (int) strtol(&buf[16], (char **)NULL, 10);
+
+		if( numNodes_CPU != temp1 || maxConns_CPU != temp2){
+			printf("Towers are incompatible.\nDeath to structure.\n");
+			printf("Number of nodes Tower 1: %d\nNumber of nodes Tower2: %d\n",   numNodes_CPU, temp1);
+			printf("Max connections Tower 1: %d\nMax connections Tower2: %d\n\n", maxConns_CPU, temp2);
+
+			exit(1);
+		}
+	
+		fgets(buf, 1000, filecon);
+		fgets(buf, 1000, filecon);
+			//Skip two lines
+
+		reset_numcon(numcon_2);
+	
+		//printf("\nbeami values file 2\n");
+		for (i = 0; i < numNodes_CPU; i++){
+					
+			fgets(buf, 1000, filecon);
+			pch = strtok(buf, "\t");
+			while(pch != NULL){
+				
+				j = strtol(pch, (char **)NULL, 10);
+				beami_2[i*maxConns_CPU + numcon_2[i]] = j;
+				numcon_2[i] += 1;	
+				pch = strtok(NULL, "\t");
+					//Reads the next token
+			//	printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
+			}
+			//printf("number of connections to %3d: %3d\n", i, numcon_1[i]);
+		}
+
+		fgets(buf, 1000, filecon);
+		fgets(buf, 1000, filecon);
+			//Skip two lines
+		
+		reset_numcon(numcon_2);
+
+		//printf("\nbeamk values file 2\n");
+
+		for (i = 0; i < numNodes_CPU; i++){
+
+		//	printf("row %d\n", i);
+			fgets(buf, 1000, filecon);
+			pch = strtok(buf, "\t");
+			while(pch != NULL){
+				k_const = strtof(pch, (char **)NULL);
+				beamk_2[i*maxConns_CPU + numcon_2[i]] = k_const;
+				numcon_2[i] += 1;	
+				pch = strtok(NULL, "\t");
+			}
+			//printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
+
+
+		}
+
+
+		fgets(buf, 1000, filecon);
+		fgets(buf, 1000, filecon);
+			//Skip two lines
+		
+		reset_numcon(numcon_2);
+
+		//printf("\nbeaml values file 2\n");
+
+		for (i = 0; i < numNodes_CPU; i++){
+
+		//	printf("row %d\n", i);
+			fgets(buf, 1000, filecon);
+			pch = strtok(buf, "\t");
+			while(pch != NULL){
+				
+				length = strtof(pch, (char **)NULL);
+				beaml_2[i*maxConns_CPU + numcon_2[i]] = length;
+				numcon_2[i] += 1;	
+				pch = strtok(NULL, "\t");
+					//Reads the next token
+				//printf("number of connections to %3d: %3d\n", i, numcon_CPU[i]);
+			}
+			//printf("numcon_CPU[%d]: %d\n", i, numcon_CPU[i]);
+		}
+	
+	fclose(filecon);
+
+	asprintf(&filename, "%s/%s%s", popfolder, folder2, "/nodepos.txt");
+	filecon = fopen(filename, "r");
+
+		fgets(buf, 1000, filecon);
+			//Skip line
+		for (i = 0; i < numNodes_CPU; i++){
+					
+			fgets(buf, 1000, filecon);
+
+			pch = strtok(buf, "\t");
+			cnx_2[i].px = strtof(pch, (char **)NULL);
+			pch = strtok(NULL, "\t");
+			cnx_2[i].py = strtof(pch, (char **)NULL);
+			pch = strtok(NULL, "\t");
+			cnx_2[i].pz = strtof(pch, (char **)NULL);
+
+			pch = strtok(NULL, "\t");
+			cnx_2[i].anchor = (pch[0]==0["T"]); //pointer sorcery
+			
+		}
+
+	fclose(filecon);	
+	printf("Folder 2 reading passed.\n");
+	
+	for(i = 0; i < numNodes_CPU; i++){
+		for(j = 0; j < maxConns_CPU; j++){
+			beami_CPU[i*maxConns_CPU + j] = beami_1[i*maxConns_CPU + j];
+			beamk_CPU[i*maxConns_CPU + j] = beamk_1[i*maxConns_CPU + j];
+			beaml_CPU[i*maxConns_CPU + j] = beaml_1[i*maxConns_CPU + j];
+		}
+
+		numcon_CPU[i] = numcon_1[i];
+
+		if(rand() < 0.5*RAND_MAX){
+			cnx_CPU[i] = cnx_2[i];
+		} else {
+			cnx_CPU[i] = cnx_1[i];
+		}
+	} 
+}
 
 void create_beams(){
 	
-
+	/*
 	if(readfolder[0] == 0[""]){ //pointer sorcery
 		random_start();
-	} /*else { 
+	} else { 
 		file_start(readfolder);
 	}
-
-
-	int i, j;*/
-	/*for(i = 0; i < numNodes_CPU; i++){
+	*/
+	switch(flag) {
+		case 'b' :
+			breed_structure(readfolder1, readfolder2); 
+			printf("Breeding structures completed.\n");
+			break;
+		case 's' :
+			file_start(readfolder1);
+			printf("File reading completed.\n");
+			break;
+		default  :
+			random_start(); 
+			printf("Random initializstion completed.\n");
+	}
+	
+	/*
+	int i, j;
+	for(i = 0; i < numNodes_CPU; i++){
 		for(j = 0; j < numcon_CPU[i]; j++){
 			printf("nodes connected: %d, %d\n", i, beami_CPU[i*maxConns_CPU + j]);	
 			printf("constant:        %.3f\n", beamk_CPU[i*maxConns_CPU + j]);
 			printf("length:          %.3f\n\n", beaml_CPU[i*maxConns_CPU + j]);
 		}
 	}*/
-	printf("exits create function\n");
 }
 
 double springmass(double k, double l){
@@ -440,7 +793,7 @@ void set_initial_conditions()
 	k_anchor = 4000;
 	k_const = 1;
 	rod_proportion = 10;
-	dampening_CPU = 20;
+	dampening_CPU = 100;
 
 	create_beams();
 	
@@ -504,9 +857,11 @@ double fastest_cnxn(Connection *cnx){
 	int i;
 	double max_fastness = 0;
 	for(i = 0; i < numNodes_CPU; i++){
-		max_fastness = max(max_fastness, sqrt(cnx[i].vx*cnx[i].vx+
-						      cnx[i].vy*cnx[i].vy+
-						      cnx[i].vz*cnx[i].vz));
+		if(numcon_CPU[i] >=3){
+			max_fastness = max(max_fastness, sqrt(cnx[i].vx*cnx[i].vx+
+							      cnx[i].vy*cnx[i].vy+
+							      cnx[i].vz*cnx[i].vz));
+		}
 	}
 	return(max_fastness);
 }
@@ -589,15 +944,20 @@ __global__ void setForces(Connection *cnx){
 		cnx[i].fx = 0.0;
 		cnx[i].fy = -GRAVITY*cnx[i].mass;	//Throw gravity into the mix
 		cnx[i].fz = 0.0;
-		//printf("core %d checking in.\n", i);
+	/*	if(i == 9){
+			printf("core %d checking in.\n", i);
+			printf("dummy string\n");
+			printf("big dummy string\n\n");
+		}*/
 	}
 }
 
 __global__ void calcForces(Connection *cnx, int *numcon, int *beami, double *beamk, double *beaml, bool *fail){
 
+	//printf("On thread.\n");
 	int i = threadIdx.x + blockDim.x*blockIdx.x;
 	int M = maxConns_GPU;
-
+	
 	if(i < numNodes_GPU){
 	
 		double dvx, dvy, dvz, dpx, dpy, dpz, dD; 
@@ -622,17 +982,31 @@ __global__ void calcForces(Connection *cnx, int *numcon, int *beami, double *bea
 			//magnitude of relative position
         
 			relative_v = dev_dot_prod(dpx,dpy,dpz,dvx,dvy,dvz)/r;
+			//relative_v = (dpx*dvx+dpy*dvy+dpz*dvz)/r;
+			//printf("%.3f\n", relative_v);
+			/*
+			if(i == 10 && node2 == 2){
+				//printf("separation:\n");
+				//printf("%.3f\n", dpx);
+				//printf("basic\n");
+				//printf("%.3f\n", dpy);
+				//printf("%.3f\n", dpz);
+				printf("%.3f\n", dpx);
+				//printf("%.3f\n\n", r);
+				//fflush(stdout);
+			
+			}*/
+		
 			//magnitude of relative velocity,
 			// projected onto the relative position.
 			//I.e., relative velocity along the spring.
-        
+       			
 			dD= r - beaml[i*M + j];
 			fail[i*M + j] = (10*abs(dD) > beaml[i*M + j]);
 			//difference between relative position and default length of spring
 			cnx[i].fx += (dD*beamk[i*M + j] + dampening_GPU*relative_v)*dpx/r;
 			cnx[i].fy += (dD*beamk[i*M + j] + dampening_GPU*relative_v)*dpy/r;
-			cnx[i].fz += (dD*beamk[i*M + j] + dampening_GPU*relative_v)*dpz/r;
-		
+			cnx[i].fz += (dD*beamk[i*M + j] + dampening_GPU*relative_v)*dpz/r;		
 			/*printf("node1.px: %.3f\nnode2.px: %.3f\ndD:       %.3f\nbeamk:    %.3f\ndampen:   %.3f\n", 
 				cnx[i].px,      cnx[node2].px,  dD,             beamk[M*i + j],
 											                  dampening*relative_v);*/	
@@ -662,13 +1036,33 @@ __global__ void calcVP(Connection *cnx) {
 } // */
 
 double goodness(){
-	
-	int i;
+
+	int i, j;
 	double maxheight = 0;
+	int failedBeams = 0;
+
 	for (i = 0; i < numNodes_CPU; i++){
-		maxheight = max(cnx_CPU[i].py, maxheight);
-	} 
-	return(maxheight);
+		//printf("%d\n", numcon_CPU[i]);
+		if (numcon_CPU[i] >= 3){	//We don't care about things that just happen to have swung upward at the right time and stick.
+			maxheight = max(cnx_CPU[i].py, maxheight);
+		}
+	}
+
+	for (i = 0; i < numNodes_CPU; i++){
+		for (j = 0; j < numcon_CPU[i]; j++){
+			if(fail_CPU[i*maxConns_CPU + j]){
+				failedBeams++;
+			}
+		}
+	}
+
+	//printf("\ngoodnesscomponents\n%.8f\n%d\n", maxheight, failedBeams);
+	//return(maxheight);
+	if (failedBeams == 0){
+		return(maxheight);
+	} else {
+		return(maxheight/failedBeams);
+	}
 }
 
 void update(int value){
@@ -682,18 +1076,15 @@ void update(int value){
 
 		calcVP<<<numblocks, blocksize>>>(cnx_GPU);
 		
-		//cudaMemcpy( cnx_CPU,  cnx_GPU, numNodes_CPU*sizeof(Connection),        cudaMemcpyDeviceToHost);
-		//cudaMemcpy(fail_CPU, fail_GPU, maxConns_CPU*numNodes_CPU*sizeof(bool), cudaMemcpyDeviceToHost);
+		cudaMemcpy( cnx_CPU,  cnx_GPU, numNodes_CPU*sizeof(Connection),                cudaMemcpyDeviceToHost);
+		cudaMemcpy(fail_CPU, fail_GPU, maxConns_CPU*numNodes_CPU*sizeof(bool),       cudaMemcpyDeviceToHost);
 	
 		//glutPostRedisplay();
 		//glutTimerFunc(1, update, 0);
 		//printf("cnx[9] velocity: %.3f\n", cnx_CPU[9].vy);
 		timerunning += DT;
 	}
-	else{	
-		cudaMemcpy( cnx_CPU,  cnx_GPU, numNodes_CPU*sizeof(Connection),        cudaMemcpyDeviceToHost);	
-		cudaMemcpy(fail_CPU, fail_GPU, maxConns_CPU*numNodes_CPU*sizeof(bool), cudaMemcpyDeviceToHost);  
-		
+	else{		
 		if (fastest_cnxn(cnx_CPU) < MAXVEL){
 			if(!written){
 
@@ -701,13 +1092,14 @@ void update(int value){
 				int trial = 0;
 				int i, j;
 				char* filetry;
-				printf("preloop1\n");
+				//printf("preloop1\n");
 				while (result == -1){
 					trial += 1;
 					asprintf(&filetry, "%s/trial%d", popfolder, trial);
 					result = mkdir(filetry, ACCESSPERMS);
 					//printf("trying %d\n", trial);
 					//printf("result %d\n", result);
+					//printf(filetry);
  				}
 				printf("Writing trial%d...\n", trial);
 				//printf("passloop1\n");
@@ -720,7 +1112,7 @@ void update(int value){
 				asprintf(&nodepos, "%s/nodepos.txt", filetry);
 				asprintf(&nodecon, "%s/nodecon.txt", filetry);
 				asprintf(&popsumm, "%s/summary.txt", popfolder);
-				
+
 				FILE *filecon;
 
 				filecon = fopen(nodepos, "w+");
@@ -774,9 +1166,9 @@ void update(int value){
 					}
 
 				fclose(filecon);
-				
+
 				filecon = fopen(popsumm, "a");
-					fprintf(filecon, "trial%d\t%.3f\n", trial, goodness());
+					fprintf(filecon, "trial%d\t%.5f\n", trial, goodness());
 				fclose(filecon);
 
 				printf("written.\n");
@@ -786,14 +1178,15 @@ void update(int value){
 		} else if (attempt < MAXTRIES){
 			attempt += 1;
 			timerunning = 0;
+			//printf("Attempt %d/%d with timestep %.2f.\n", attempt, MAXTRIES, STOP_TIME);
 
-			//glutTimerFunc(1, update, 0);
+		//	glutTimerFunc(1, update, 0);
 		} else {
 			isRunning = false;
+			printf("\nUnstable.\nCurrent velocity: %.3f\nMax velocity: %.3f\n\n", fastest_cnxn(cnx_CPU), MAXVEL);
 		}
 	}
 }
-
 
 /*
 void Display(void)
@@ -821,7 +1214,7 @@ void reshape(int w, int h)
 */
 
 void mainLoop(){
-	
+
 	while(isRunning){
 		update(0);
 	}
@@ -829,14 +1222,28 @@ void mainLoop(){
 
 int main(int argc, char *argv[])
 {
-	
-	popfolder = (char *)malloc( 1000* sizeof(char)   );
-	if(argc == 2){
-		asprintf(&popfolder, "%s", argv[1]);
-		//*popfolder = *argv[1];
-	} else if(argc == 1){
-		asprintf(&popfolder, "%s", "stablestructs1");
+	readfolder1 = (char *)malloc( 1000* sizeof(char));
+	readfolder2 = (char *)malloc( 1000* sizeof(char));
+	popfolder   = (char *)malloc( 1000* sizeof(char));
+	if(argc == 1){
+		flag = 'X';
+	} else if(argc == 2){
+		asprintf(&popfolder,   "%s", argv[1]);
 
+		flag = 'X';
+	} else if(argc == 3){
+		asprintf(&readfolder1, "%s", argv[1]);
+		asprintf(&popfolder,   "%s", argv[2]);
+
+		flag = 's';
+	} else if(argc == 4){
+		asprintf(&readfolder1, "%s", argv[1]);
+		asprintf(&readfolder2, "%s", argv[2]);
+		asprintf(&popfolder,   "%s", argv[3]);	
+
+		flag = 'b';
+	} else {
+		return(1);
 	}
 	/*
 	glutInit(&argc,argv);
@@ -867,7 +1274,6 @@ int main(int argc, char *argv[])
 	glEnable(GL_DEPTH_TEST);
 	*/
 	set_initial_conditions();
-
 	/*
 	gluLookAt(0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
 	glutDisplayFunc(Display);
@@ -877,6 +1283,7 @@ int main(int argc, char *argv[])
 	glutMainLoop();
 	*/
 	mainLoop();
+	CleanUp();
 	return 0;
 }
 

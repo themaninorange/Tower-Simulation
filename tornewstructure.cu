@@ -1151,16 +1151,14 @@ __global__ void calcForces(Connection *cnx, int *numcon, int *beami, double *bea
 
 }// */
 
-__device__ double jAtomicAdd(double* address, double val) //NVIDIA patch for adding floats atomically.
-{
-    unsigned long long int* address_as_ull =
-                             (unsigned long long int*)address;
+__device__ double jAtomicAdd(double* address, double val) //NVIDIA "patch" for adding floats atomically.
+{                                                         //http://developer.download.nvidia.com/compute/DevZone/docs/html/C/doc/CUDA_C_Programming_Guide.pdf
+    unsigned long long int* address_as_ull = (unsigned long long int*)address;
     unsigned long long int old = *address_as_ull, assumed;
     do {
         assumed = old;
-old = atomicCAS(address_as_ull, assumed,
-                        __double_as_longlong(val +
-                               __longlong_as_double(assumed)));
+        old = atomicCAS(address_as_ull, assumed,
+                        __double_as_longlong(val + __longlong_as_double(assumed)));
     } while (assumed != old);
     return __longlong_as_double(old);
 }
