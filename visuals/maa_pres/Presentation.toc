@@ -1,0 +1,5 @@
+\beamer@endinputifotherversion {3.24pt}
+\beamer@sectionintoc {1}{Goals/Strategy}{4}{0}{1}
+\beamer@sectionintoc {2}{The Model}{7}{0}{2}
+\beamer@sectionintoc {3}{Evolution}{10}{0}{3}
+\beamer@sectionintoc {4}{This isn't over yet!}{14}{0}{4}
